@@ -1,13 +1,13 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { Project } from '@shared/types'
 import AgentCard from './AgentCard'
+import AgentFeed from './AgentFeed'
 import TaskInput from './TaskInput'
 import TaskQueue from './TaskQueue'
 import AddProjectDialog from './AddProjectDialog'
 import { useAgentStore } from '../stores/agentStore'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
-import { useState } from 'react'
 
 export default function Dashboard() {
   const agents = useAgentStore((s) => Object.values(s.agents))
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const addProject = useProjectStore((s) => s.addProject)
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const [showAddProject, setShowAddProject] = useState(false)
+  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
 
   const handleSubmitTask = useCallback(async (prompt: string, model: string) => {
     if (!activeProjectId) return
@@ -63,6 +64,11 @@ export default function Dashboard() {
     }
   }, [addProject])
 
+  // If an agent is expanded, show fullscreen AgentFeed
+  if (expandedAgentId) {
+    return <AgentFeed agentId={expandedAgentId} onClose={() => setExpandedAgentId(null)} />
+  }
+
   return (
     <div className="h-full flex flex-col px-6 pb-6 overflow-y-auto">
       {/* Task Input */}
@@ -93,7 +99,7 @@ export default function Dashboard() {
               <AgentCard
                 key={agent.id}
                 agent={agent}
-                onClick={() => console.log('expand', agent.id)}
+                onClick={() => setExpandedAgentId(agent.id)}
               />
             ))}
           </div>

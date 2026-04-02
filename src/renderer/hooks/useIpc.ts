@@ -3,7 +3,8 @@ import { useAgentStore } from '../stores/agentStore'
 import { useTaskStore } from '../stores/taskStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useProjectStore } from '../stores/projectStore'
-import type { Task, Agent, AgentStatus, Project } from '@shared/types'
+import { useAuthStore } from '../stores/authStore'
+import type { Task, Agent, AgentStatus, PipelineEvent, Project } from '@shared/types'
 
 export function useIpcListeners() {
   // Load persisted settings + projects on mount
@@ -40,7 +41,7 @@ export function useIpcListeners() {
   useEffect(() => {
     const unsubs: (() => void)[] = []
     const { addTask, updateTask } = useTaskStore.getState()
-    const { addAgent, appendOutput, setFrame, setStatus } = useAgentStore.getState()
+    const { addAgent, appendOutput, appendPipeline, setFrame, setStatus } = useAgentStore.getState()
 
     // Task events from main process
     unsubs.push(
@@ -112,12 +113,47 @@ export function useIpcListeners() {
             outputLines: [],
             devServerUrl: null,
             feedMode,
-            validationScreenshot: null
+            validationScreenshot: null,
+            pipeline: []
           }
           addAgent(newAgent)
         } else {
           setStatus(agentId, status, progress)
         }
+      })
+    )
+
+    unsubs.push(
+      window.api.on('agent:validationScreenshot', (data: unknown) => {
+        const { agentId, screenshot } = data as { agentId: string; screenshot: string }
+        const agent = useAgentStore.getState().agents[agentId]
+        if (agent) {
+          useAgentStore.getState().updateAgent(agentId, { validationScreenshot: screenshot })
+        }
+      })
+    )
+
+    // Pipeline events — track what stage the agent is in
+    unsubs.push(
+      window.api.on('agent:pipeline', (data: unknown) => {
+        const { agentId, step, message, detail, timestamp } = data as {
+          agentId: string | null
+          step: string
+          message: string
+          detail?: string
+          timestamp: number
+        }
+        if (agentId) {
+          appendPipeline(agentId, { step: step as any, message, detail, timestamp })
+        }
+      })
+    )
+
+    // Auth change events from main process
+    unsubs.push(
+      window.api.on('auth:changed', (data: unknown) => {
+        const authData = data as { isAuthenticated: boolean; user: any; profile: any }
+        useAuthStore.getState().setAuth(authData)
       })
     )
 

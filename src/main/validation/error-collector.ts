@@ -21,7 +21,9 @@ export interface ErrorContext {
  */
 export function collectGitDiff(projectDir: string): string | null {
   try {
-    const diff = execSync('git diff', { cwd: projectDir, encoding: 'utf-8', timeout: 10000 })
+    // Check if it's a git repo first
+    execSync('git rev-parse --is-inside-work-tree', { cwd: projectDir, encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] })
+    const diff = execSync('git diff', { cwd: projectDir, encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'] })
     return diff.trim() || null
   } catch {
     return null
@@ -30,8 +32,24 @@ export function collectGitDiff(projectDir: string): string | null {
 
 /**
  * Run tests and capture output.
+ * Only runs if the project actually has a test setup.
  */
 export function collectTestOutput(projectDir: string): string | null {
+  // Don't run tests if there's no package.json (empty/new project)
+  try {
+    const fs = require('fs')
+    const pkgPath = require('path').join(projectDir, 'package.json')
+    if (!fs.existsSync(pkgPath)) return null
+
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+    // Only run if there's an actual test script (not the default npm "echo Error")
+    if (!pkg.scripts?.test || pkg.scripts.test.includes('echo') || pkg.scripts.test.includes('no test')) {
+      return null
+    }
+  } catch {
+    return null
+  }
+
   // Try common test commands
   const testCommands = [
     'npm test -- --watchAll=false 2>&1',
@@ -49,7 +67,6 @@ export function collectTestOutput(projectDir: string): string | null {
       })
       return output.trim()
     } catch (err: unknown) {
-      // Test command failed — capture the output (this is what we want)
       const execErr = err as { stdout?: string; stderr?: string } | null
       if (execErr?.stdout || execErr?.stderr) {
         return `${execErr.stdout ?? ''}\n${execErr.stderr ?? ''}`.trim()

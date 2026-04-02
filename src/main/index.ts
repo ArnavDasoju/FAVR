@@ -7,6 +7,7 @@ import { taskQueue } from './tasks/queue'
 import { agentManager } from './agents/manager'
 import { modelRouter } from './optimization/router'
 import { loadSettings } from './store'
+import { cloudClient } from './cloud/supabase'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -63,13 +64,22 @@ app.whenReady().then(() => {
   // Load persisted settings (API keys, thresholds, projects)
   loadSettings()
 
-  // Wire queue → agent manager: spawn agent and return output
+  // Initialize cloud client (Supabase auth + credit proxy)
+  const supabaseUrl = process.env.SUPABASE_URL ?? ''
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? ''
+  if (supabaseUrl && supabaseAnonKey) {
+    cloudClient.init(supabaseUrl, supabaseAnonKey)
+    console.log('[main] Cloud client initialized')
+  }
+
+  // Wire queue → agent manager: spawn agent and return output + changed files
   taskQueue.setAgentSpawner(async (subtask, projectDir) => {
     const agentId = await agentManager.spawn(subtask, projectDir)
     const agent = agentManager.getAgent(agentId)
     return {
       agentId,
-      output: agent?.outputLines ?? []
+      output: agent?.outputLines ?? [],
+      changedFiles: agent?.changedFiles ?? []
     }
   })
 

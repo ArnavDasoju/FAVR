@@ -1,7 +1,8 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
 import { taskQueue } from './tasks/queue'
 import { agentManager } from './agents/manager'
 import { getSettings, saveSettings, saveProject, removeProject as removePersistedProject } from './store'
+import { cloudClient } from './cloud/supabase'
 
 export function setupIpc(): void {
   // ── Dialogs ──────────────────────────────────────────────────
@@ -117,5 +118,67 @@ export function setupIpc(): void {
     } catch {
       return { available: false, models: [] }
     }
+  })
+
+  // ── Auth (Supabase Cloud) ───────────────────────────────────
+  ipcMain.handle('auth:signup', async (_event, data: { email: string; password: string }) => {
+    return cloudClient.signup(data.email, data.password)
+  })
+
+  ipcMain.handle('auth:login', async (_event, data: { email: string; password: string }) => {
+    return cloudClient.login(data.email, data.password)
+  })
+
+  ipcMain.handle('auth:logout', async () => {
+    await cloudClient.logout()
+    return { success: true }
+  })
+
+  ipcMain.handle('auth:status', async () => {
+    return {
+      isAuthenticated: cloudClient.isAuthenticated,
+      user: cloudClient.currentUser,
+      profile: cloudClient.currentProfile
+    }
+  })
+
+  ipcMain.handle('auth:refreshProfile', async () => {
+    await cloudClient.refreshProfile()
+    return {
+      isAuthenticated: cloudClient.isAuthenticated,
+      user: cloudClient.currentUser,
+      profile: cloudClient.currentProfile
+    }
+  })
+
+  // ── Credits ─────────────────────────────────────────────────
+  ipcMain.handle('credits:balance', async () => {
+    return cloudClient.getBalance()
+  })
+
+  ipcMain.handle('credits:purchase', async (_event, amount: number) => {
+    const result = await cloudClient.purchaseCredits(amount)
+    if (result.checkout_url) {
+      shell.openExternal(result.checkout_url)
+    }
+    return result
+  })
+
+  ipcMain.handle('credits:history', async () => {
+    return cloudClient.getTransactionHistory()
+  })
+
+  // ── Cloud AI (Pro users) ────────────────────────────────────
+  ipcMain.handle('cloud:chat', async (_event, params) => {
+    const res = await cloudClient.chatCompletion(params)
+    return res.json()
+  })
+
+  ipcMain.handle('cloud:classify', async (_event, prompt: string) => {
+    return cloudClient.classify(prompt)
+  })
+
+  ipcMain.handle('cloud:validate', async (_event, params) => {
+    return cloudClient.validate(params)
   })
 }

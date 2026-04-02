@@ -210,6 +210,19 @@ function git(cwd: string, command: string): string {
     cwd,
     encoding: 'utf-8',
     timeout: 15000,
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
   })
+}
+
+/**
+ * Quick check if directory is a git repo.
+ */
+export function isGitRepo(projectDir: string): boolean {
+  try {
+    git(projectDir, 'rev-parse --is-inside-work-tree')
+    return true
+  } catch {
+    return false
+  }
 }

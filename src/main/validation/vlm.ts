@@ -23,6 +23,10 @@ export async function validateWithVlm(opts: {
   diff: string | null
   testOutput: string | null
   consoleErrors: string[]
+  fileContents?: string | null
+  executionOutput?: string | null
+  executionCommand?: string | null
+  executionSuccess?: boolean | null
 }): Promise<VlmValidationResult> {
   const { apiKey, prompt, beforeScreenshot, afterScreenshot, diff, testOutput, consoleErrors } = opts
 
@@ -30,7 +34,12 @@ export async function validateWithVlm(opts: {
 
   // Build the validation prompt
   parts.push({
-    text: buildValidationPrompt(prompt, diff, testOutput, consoleErrors)
+    text: buildValidationPrompt(prompt, diff, testOutput, consoleErrors, {
+      fileContents: opts.fileContents ?? null,
+      executionOutput: opts.executionOutput ?? null,
+      executionCommand: opts.executionCommand ?? null,
+      executionSuccess: opts.executionSuccess ?? null
+    })
   })
 
   // Add screenshots if available
@@ -81,7 +90,13 @@ function buildValidationPrompt(
   taskPrompt: string,
   diff: string | null,
   testOutput: string | null,
-  consoleErrors: string[]
+  consoleErrors: string[],
+  extra?: {
+    fileContents: string | null
+    executionOutput: string | null
+    executionCommand: string | null
+    executionSuccess: boolean | null
+  }
 ): string {
   const sections: string[] = []
 
@@ -89,12 +104,34 @@ function buildValidationPrompt(
   sections.push('')
   sections.push(`TASK: ${taskPrompt}`)
 
+  // Show the actual code that was written
+  if (extra?.fileContents) {
+    sections.push('')
+    sections.push('CODE WRITTEN BY AGENT:')
+    sections.push('```')
+    sections.push(extra.fileContents.slice(0, 4000))
+    sections.push('```')
+  }
+
   if (diff) {
     sections.push('')
     sections.push('CODE CHANGES (git diff):')
     sections.push('```diff')
     sections.push(diff.slice(0, 3000))
     sections.push('```')
+  }
+
+  // Show execution results
+  if (extra?.executionCommand) {
+    sections.push('')
+    sections.push(`EXECUTION: \`${extra.executionCommand}\``)
+    sections.push(`Result: ${extra.executionSuccess ? 'SUCCESS (exit 0)' : 'FAILED'}`)
+    if (extra.executionOutput) {
+      sections.push('Output:')
+      sections.push('```')
+      sections.push(extra.executionOutput.slice(0, 2000))
+      sections.push('```')
+    }
   }
 
   if (testOutput) {
@@ -114,17 +151,11 @@ function buildValidationPrompt(
   }
 
   sections.push('')
-  sections.push('Respond in this exact JSON format:')
-  sections.push('```json')
-  sections.push('{')
-  sections.push('  "confidence": <0-100>,')
-  sections.push('  "reasoning": "<brief explanation>",')
-  sections.push('  "issues": ["<issue 1>", "<issue 2>"]')
-  sections.push('}')
-  sections.push('```')
+  sections.push('Respond in this exact JSON format (nothing else):')
+  sections.push('{"confidence": <0-100>, "reasoning": "<1-2 sentences>", "issues": ["<issue>"]}')
   sections.push('')
   sections.push('confidence: 90-100 = task completed correctly, 50-89 = partially done or minor issues, 0-49 = broken or wrong.')
-  sections.push('If screenshots are provided, check that the visual output matches the task requirements.')
+  sections.push('Base your assessment on the ACTUAL CODE and EXECUTION OUTPUT, not assumptions.')
 
   return sections.join('\n')
 }
@@ -166,6 +197,10 @@ export async function validateTextOnly(opts: {
   prompt: string
   diff: string | null
   testOutput: string | null
+  fileContents?: string | null
+  executionOutput?: string | null
+  executionCommand?: string | null
+  executionSuccess?: boolean | null
 }): Promise<VlmValidationResult> {
   return validateWithVlm({
     ...opts,

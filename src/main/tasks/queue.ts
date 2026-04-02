@@ -8,7 +8,9 @@ import { BrowserWindow } from 'electron'
 import { chunkTask, type ChunkedSubtask } from './chunker'
 import { runValidation, type ValidatorConfig } from '../validation/validator'
 import { modelRouter } from '../optimization/router'
-import { prepareBranch, commitAgentChanges, mergeBranch, rejectBranch } from '../git/safety'
+import { prepareBranch, commitAgentChanges, mergeBranch, rejectBranch, isGitRepo } from '../git/safety'
+import { feedStreamer } from '../feeds/streamer'
+import { cloudClient } from '../cloud/supabase'
 
 export type QueuedTaskStatus = 'queued' | 'chunking' | 'running' | 'validating' | 'retrying' | 'needs_review' | 'approved' | 'rejected'
 
@@ -49,7 +51,7 @@ export interface QueuedTask {
 }
 
 // Agent spawner function — set by main process to avoid circular imports
-type AgentSpawner = (subtask: QueuedSubtask, projectDir: string) => Promise<{ agentId: string; output: string[] }>
+type AgentSpawner = (subtask: QueuedSubtask, projectDir: string) => Promise<{ agentId: string; output: string[]; changedFiles: string[] }>
 
 class TaskQueue {
   private tasks: Map<string, QueuedTask> = new Map()
@@ -116,8 +118,23 @@ class TaskQueue {
     this.tasks.set(taskId, task)
     this.emit('task:created', task)
 
-    // Chunk the task
-    const chunks = await chunkTask(prompt)
+    // Chunk the task — Pro users get LLM classification via cloud, BYOK users get heuristic
+    const isProCloud = cloudClient.isAuthenticated && cloudClient.isProUser
+    const classifyFn = isProCloud
+      ? async (input: string) => {
+          const result = await cloudClient.classify(input) as any
+          return {
+            subtasks: (result.subtasks ?? []).map((s: any) => ({
+              prompt: s.prompt,
+              suggestedModel: s.suggested_model ?? null,
+              taskType: s.type ?? 'general',
+              complexity: s.complexity ?? 'medium'
+            }))
+          }
+        }
+      : undefined
+
+    const chunks = await chunkTask(prompt, { classifyFn })
     task.subtasks = chunks.map((chunk) => this.createSubtask(taskId, chunk, requestedModel))
     task.status = 'queued'
     this.emit('task:updated', task)
@@ -202,14 +219,13 @@ class TaskQueue {
     this.emit('task:updated', task)
 
     // Git safety: create branch on first run (not on retries — reuse same branch)
-    if (!subtask.gitBranch) {
+    if (!subtask.gitBranch && isGitRepo(projectDir)) {
       const branchResult = prepareBranch(projectDir, subtask.id)
       if (branchResult) {
         subtask.gitBranch = branchResult.branch
         subtask.gitOriginalBranch = branchResult.originalBranch
         subtask.gitStashed = branchResult.stashed
       }
-      // If git isn't available, we proceed without branch safety
     }
 
     // Spawn agent
@@ -221,22 +237,38 @@ class TaskQueue {
     }
 
     let agentOutput: string[] = []
+    let changedFiles: string[] = []
     try {
       const result = await this.spawnAgent(subtask, projectDir)
       subtask.assignedAgentId = result.agentId
       agentOutput = result.output
+      changedFiles = result.changedFiles ?? []
+
+      // Pipeline: coding complete
+      this.emitPipeline(result.agentId, 'coding', `Generated code with ${subtask.assignedModel ?? 'auto'}`)
+
+      // Pipeline: writing files
+      if (changedFiles.length > 0) {
+        this.emitPipeline(result.agentId, 'writing', `Wrote ${changedFiles.length} file(s): ${changedFiles.join(', ')}`)
+      } else {
+        this.emitPipeline(result.agentId, 'writing', 'No file changes detected in output')
+      }
     } catch (err) {
       subtask.status = 'needs_review'
       subtask.error = err instanceof Error ? err.message : String(err)
+      this.emitPipeline(subtask.assignedAgentId, 'error', subtask.error)
       this.updateParentStatus(task)
       this.emit('task:updated', task)
       return
     }
 
     // Commit agent changes before validation
-    if (subtask.gitBranch) {
+    if (subtask.gitBranch && isGitRepo(projectDir)) {
       commitAgentChanges(projectDir, subtask.id, subtask.originalPrompt)
     }
+
+    // Pipeline: executing (will be updated with result after validation)
+    this.emitPipeline(subtask.assignedAgentId, 'executing', 'Running code to verify it works...')
 
     // Validate
     subtask.status = 'validating'
@@ -244,20 +276,90 @@ class TaskQueue {
     this.emit('task:updated', task)
 
     const devServerUrl = this.devServerUrls.get(task.projectId) ?? null
-    const validatorConfig: ValidatorConfig = {
-      geminiApiKey: this.geminiApiKey,
-      confidenceThreshold: this.confidenceThreshold
+
+    // Start live feed streaming during validation (if dev server available)
+    if (devServerUrl && subtask.assignedAgentId) {
+      feedStreamer.startStreaming(subtask.assignedAgentId, devServerUrl)
     }
 
-    const validation = await runValidation({
-      subtask,
-      projectDir,
-      devServerUrl,
-      agentOutput,
-      config: validatorConfig
-    })
+    // Pro users validate through cloud edge function (free, uses BLD's Gemini key)
+    // BYOK users validate locally (needs their own Gemini key, or falls back to heuristic)
+    const isProCloud = cloudClient.isAuthenticated && cloudClient.isProUser
+
+    let validation: { confidence: number; reasoning: string; issues: string[]; errorPrompt?: string }
+
+    if (isProCloud) {
+      const cloudResult = await cloudClient.validate({
+        prompt: subtask.originalPrompt,
+        diff: undefined, // TODO: pass git diff once available
+        agent_output: agentOutput.join('\n')
+      }) as any
+
+      validation = {
+        confidence: cloudResult.confidence ?? 50,
+        reasoning: cloudResult.reasoning ?? 'Cloud validation',
+        issues: cloudResult.issues ?? [],
+        errorPrompt: cloudResult.suggestion
+          ? `You were asked to: ${subtask.originalPrompt}\n\nValidation found issues:\n${cloudResult.reasoning}\n\nSuggestion: ${cloudResult.suggestion}\n\nFix these issues.`
+          : undefined
+      }
+    } else {
+      const validatorConfig: ValidatorConfig = {
+        geminiApiKey: this.geminiApiKey,
+        confidenceThreshold: this.confidenceThreshold
+      }
+
+      const localResult = await runValidation({
+        subtask,
+        projectDir,
+        devServerUrl,
+        agentOutput,
+        changedFiles,
+        config: validatorConfig
+      })
+
+      validation = {
+        confidence: localResult.confidence,
+        reasoning: localResult.reasoning,
+        issues: localResult.issues,
+        errorPrompt: localResult.errorPrompt ?? undefined
+      }
+
+      // Pipeline: show execution output with verification
+      if (localResult.executionCommand) {
+        const statusIcon = localResult.executionSuccess ? 'Passed' : 'Failed'
+
+        // Build detail that shows expected vs actual
+        const lines: string[] = []
+        if (localResult.executionOutput) {
+          lines.push(`Output: ${localResult.executionOutput}`)
+        }
+        // Show the verification reasoning from the executor
+        if (localResult.executionReasoning) {
+          lines.push(localResult.executionReasoning)
+        }
+
+        this.emitPipeline(
+          subtask.assignedAgentId,
+          'executing',
+          `${statusIcon} — \`${localResult.executionCommand}\``,
+          lines.join('\n') || '(no output)'
+        )
+      }
+    }
+
+    // Stop live feed, capture final frame
+    if (subtask.assignedAgentId) {
+      feedStreamer.stopStreaming(subtask.assignedAgentId)
+      if (devServerUrl) {
+        await feedStreamer.captureFinalFrame(subtask.assignedAgentId, devServerUrl)
+      }
+    }
 
     subtask.confidence = validation.confidence
+
+    // Pipeline: validation complete
+    this.emitPipeline(subtask.assignedAgentId, 'validating', `Confidence: ${validation.confidence}% — ${truncate(validation.reasoning, 200)}`)
 
     // Confidence routing
     if (validation.confidence >= this.confidenceThreshold) {
@@ -265,17 +367,19 @@ class TaskQueue {
       subtask.status = 'approved'
       subtask.completedAt = Date.now()
       subtask.error = null
+      this.emitPipeline(subtask.assignedAgentId, 'approved', `Auto-approved with ${validation.confidence}% confidence`)
     } else if (validation.confidence < 5) {
       // Too broken — skip retries, ask human
       subtask.status = 'needs_review'
       subtask.error = validation.reasoning
+      this.emitPipeline(subtask.assignedAgentId, 'error', `Needs review — ${truncate(validation.reasoning, 200)}`)
     } else if (subtask.retryCount < subtask.maxRetries) {
       // Retry with descriptive error prompt
       subtask.retryCount++
       subtask.error = validation.reasoning
+      this.emitPipeline(subtask.assignedAgentId, 'retrying', `Retry ${subtask.retryCount}/${subtask.maxRetries} — ${truncate(validation.reasoning, 150)}`)
 
       if (validation.errorPrompt) {
-        // Modify the prompt to include error context for the retry
         subtask.prompt = validation.errorPrompt
       }
 
@@ -284,6 +388,7 @@ class TaskQueue {
       // Retries exhausted
       subtask.status = 'needs_review'
       subtask.error = validation.reasoning
+      this.emitPipeline(subtask.assignedAgentId, 'rejected', `Retries exhausted — needs human review`)
     }
 
     this.updateParentStatus(task)
@@ -378,12 +483,30 @@ class TaskQueue {
     return { task: null, subtask: null }
   }
 
+  private emitPipeline(agentId: string | null, step: string, message: string, detail?: string) {
+    this.emit('agent:pipeline', {
+      agentId,
+      step,
+      message,
+      detail,
+      timestamp: Date.now()
+    })
+  }
+
   private emit(channel: string, data: unknown) {
     const wins = BrowserWindow.getAllWindows()
     for (const win of wins) {
       win.webContents.send(channel, data)
     }
   }
+}
+
+/** Truncate text to maxLen, ending at a word boundary with "..." */
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text
+  const cut = text.slice(0, maxLen)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > maxLen * 0.5 ? cut.slice(0, lastSpace) : cut) + '...'
 }
 
 // Singleton

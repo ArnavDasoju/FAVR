@@ -4,6 +4,15 @@ export type AgentStatus = 'idle' | 'running' | 'validating' | 'error' | 'done'
 
 export type FeedMode = 'terminal' | 'preview' | 'screenshot'
 
+export type PipelineStep = 'queued' | 'coding' | 'writing' | 'executing' | 'validating' | 'approved' | 'rejected' | 'retrying' | 'error'
+
+export interface PipelineEvent {
+  step: PipelineStep
+  message: string
+  timestamp: number
+  detail?: string // execution output, confidence score, etc.
+}
+
 export interface Agent {
   id: string
   name: string
@@ -17,6 +26,7 @@ export interface Agent {
   devServerUrl: string | null // live preview URL
   feedMode: FeedMode // what to show in the feed area
   validationScreenshot: string | null // before/after screenshot from validation
+  pipeline: PipelineEvent[] // live pipeline steps
 }
 
 // ─── Task Types ────────────────────────────────────────────────

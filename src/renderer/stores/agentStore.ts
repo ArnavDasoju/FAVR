@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Agent, AgentStatus } from '@shared/types'
+import type { Agent, AgentStatus, PipelineEvent } from '@shared/types'
 
 interface AgentStore {
   agents: Record<string, Agent>
@@ -9,6 +9,7 @@ interface AgentStore {
   removeAgent: (id: string) => void
   setActiveAgent: (id: string | null) => void
   appendOutput: (id: string, line: string) => void
+  appendPipeline: (id: string, event: PipelineEvent) => void
   setFrame: (id: string, frame: string) => void
   setStatus: (id: string, status: AgentStatus, progress: number) => void
 }
@@ -42,6 +43,14 @@ export const useAgentStore = create<AgentStore>((set) => ({
       if (!agent) return s
       const outputLines = [...agent.outputLines, line].slice(-200)
       return { agents: { ...s.agents, [id]: { ...agent, outputLines } } }
+    }),
+
+  appendPipeline: (id, event) =>
+    set((s) => {
+      const agent = s.agents[id]
+      if (!agent) return s
+      const pipeline = [...(agent.pipeline || []), event].slice(-20)
+      return { agents: { ...s.agents, [id]: { ...agent, pipeline } } }
     }),
 
   setFrame: (id, frame) =>
