@@ -60,7 +60,17 @@ export function loadSettings(): void {
     if (p.devServerUrl) taskQueue.setDevServerUrl(p.id, p.devServerUrl)
   }
 
-  console.log(`[store] Loaded settings — ${projects.length} projects, key: ${openrouterKey ? 'set' : 'none'}`)
+  // Fall back to env vars if no keys in store
+  if (!geminiApiKey && process.env.GEMINI_API_KEY) {
+    taskQueue.setGeminiApiKey(process.env.GEMINI_API_KEY)
+    console.log('[store] Using GEMINI_API_KEY from .env')
+  }
+  if (!openrouterKey && process.env.OPENROUTER_API_KEY) {
+    agentManager.setOpenRouterKey(process.env.OPENROUTER_API_KEY)
+    console.log('[store] Using OPENROUTER_API_KEY from .env')
+  }
+
+  console.log(`[store] Loaded settings — ${projects.length} projects, gemini: ${geminiApiKey || process.env.GEMINI_API_KEY ? 'set' : 'none'}, openrouter: ${openrouterKey ? 'set' : 'none'}`)
 }
 
 /**

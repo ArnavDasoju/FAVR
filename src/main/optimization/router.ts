@@ -20,8 +20,8 @@ const DEFAULT_MODELS: ModelCapability[] = [
   {
     model: 'ollama/llama3',
     costPer1kTokens: 0,
-    maxComplexity: 'medium',
-    taskTypes: ['docs', 'refactor', 'css'],
+    maxComplexity: 'high',
+    taskTypes: [], // general purpose — always try free local model first
     available: false // checked at runtime
   },
   {

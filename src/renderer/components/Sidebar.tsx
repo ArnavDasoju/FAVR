@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-type View = 'dashboard' | 'agents' | 'flows' | 'budget' | 'settings'
+type View = 'dashboard' | 'agents' | 'flows' | 'budget' | 'credits' | 'stats' | 'settings'
 
 interface SidebarProps {
   activeView: View
@@ -15,7 +15,9 @@ const navItems: { id: View; label: string; shortcut: string }[] = [
   { id: 'agents', label: 'Agents', shortcut: '2' },
   { id: 'flows', label: 'Flows', shortcut: '3' },
   { id: 'budget', label: 'Budget', shortcut: '4' },
-  { id: 'settings', label: 'Settings', shortcut: '5' }
+  { id: 'credits', label: 'Credits', shortcut: '5' },
+  { id: 'stats', label: 'Stats', shortcut: '6' },
+  { id: 'settings', label: 'Settings', shortcut: '7' }
 ]
 
 export default function Sidebar({
