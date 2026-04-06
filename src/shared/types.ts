@@ -125,3 +125,96 @@ export interface IpcApi {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void
 }
+
+// ─── FAVR Analysis Types ──────────────────────────────────────
+
+export type Severity = 'critical' | 'high' | 'medium' | 'low'
+
+export type AnalysisPhase = 'idle' | 'ingest' | 'scan' | 'graph' | 'bayesian' | 'monte-carlo' | 'pareto' | 'complete' | 'error'
+
+export interface FavrService {
+  id: string
+  name: string
+  techStack: string[]
+  tier: 'critical' | 'high' | 'medium' | 'low'
+  sla: number
+  description: string
+  currentRiskScore: number
+}
+
+export interface FavrVulnerability {
+  id: string
+  cveId: string
+  title: string
+  description: string
+  severity: Severity
+  cvssScore: number
+  exploitProbability: number
+  affectedServiceIds: string[]
+  affectedPackage: string
+  patchedVersion: string
+  remediationCost: number
+  remediationDowntime: number
+  complexity: 'low' | 'medium' | 'high'
+  status: 'open' | 'in-progress' | 'patched' | 'verified'
+  patchOrder: number | null
+  knownExploit: boolean
+}
+
+export interface FavrDependency {
+  from: string
+  to: string
+  type: 'api' | 'data' | 'auth' | 'shared-lib'
+  propagationWeight: number
+  description: string
+}
+
+export interface FavrSimulationResult {
+  optimalOrder: string[]
+  naiveOrder: string[]
+  optimalCurve: number[]
+  naiveCurve: number[]
+  totalRiskBefore: number
+  totalRiskAfter: number
+  riskReduction: number
+  iterations: number
+  convergenceScore: number
+  confidenceIntervals: {
+    position: number
+    cveId: string
+    frequency: number
+    alternatives: { cveId: string; frequency: number }[]
+  }[]
+}
+
+export interface FavrParetoSolution {
+  id: string
+  patchOrder: string[]
+  totalRisk: number
+  totalCost: number
+  totalDowntime: number
+  dominated: boolean
+  label?: string
+}
+
+export interface FavrAnalysisResult {
+  graph: {
+    services: FavrService[]
+    dependencies: FavrDependency[]
+    vulnerabilities: FavrVulnerability[]
+  }
+  riskScores: Record<string, number>
+  simulation: FavrSimulationResult
+  pareto: {
+    solutions: FavrParetoSolution[]
+    frontierIds: string[]
+  }
+  timestamp: number
+  engineVersion: string
+}
+
+export interface FavrAnalysisProgress {
+  phase: AnalysisPhase
+  progress: number
+  message: string
+}

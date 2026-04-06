@@ -234,6 +234,24 @@ export default function Settings() {
           )}
         </Section>
 
+        {/* ── FAVR Engine ─────────────────────────────────── */}
+        <Section title="FAVR Engine">
+          <Field label="Demo Scenario" description="Load the Meridian Financial Services scenario with 15 real CVEs across 5 services.">
+            <button
+              onClick={async () => {
+                try {
+                  await window.api.invoke('analysis:loadDemo')
+                } catch (err) {
+                  console.error('Demo load failed:', err)
+                }
+              }}
+              className="w-fit bg-surface-800 border border-surface-700 text-white font-bold text-xs py-2 px-4 rounded-btn hover:bg-surface-700 transition-colors"
+            >
+              Load Demo Scenario
+            </button>
+          </Field>
+        </Section>
+
         {/* ── Save ──────────────────────────────────────────── */}
         <div className="flex justify-end pb-8">
           <button

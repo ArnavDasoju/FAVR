@@ -4,7 +4,8 @@ import { useTaskStore } from '../stores/taskStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
-import type { Task, Agent, AgentStatus, PipelineEvent, Project } from '@shared/types'
+import { useAnalysisStore } from '../stores/analysisStore'
+import type { Task, Agent, AgentStatus, PipelineEvent, Project, FavrAnalysisProgress, FavrAnalysisResult } from '@shared/types'
 
 export function useIpcListeners() {
   // Load persisted settings + projects on mount
@@ -154,6 +155,25 @@ export function useIpcListeners() {
       window.api.on('auth:changed', (data: unknown) => {
         const authData = data as { isAuthenticated: boolean; user: any; profile: any }
         useAuthStore.getState().setAuth(authData)
+      })
+    )
+
+    // FAVR Analysis events
+    unsubs.push(
+      window.api.on('analysis:progress', (data: unknown) => {
+        useAnalysisStore.getState().setProgress(data as FavrAnalysisProgress)
+      })
+    )
+
+    unsubs.push(
+      window.api.on('analysis:complete', (data: unknown) => {
+        useAnalysisStore.getState().setResult(data as FavrAnalysisResult)
+      })
+    )
+
+    unsubs.push(
+      window.api.on('analysis:error', (data: unknown) => {
+        useAnalysisStore.getState().setError(data as string)
       })
     )
 
