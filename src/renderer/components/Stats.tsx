@@ -1,230 +1,182 @@
-/**
- * Stats — Weekly stats: tasks completed, hours saved, lines generated, approval rate, streak.
- */
-
-import { useTaskStore } from '../stores/taskStore'
-import { useAgentStore } from '../stores/agentStore'
+import { useAnalysisStore } from '../stores/analysisStore'
+import BeforeAfterBar from './charts/BeforeAfterBar'
 
 export default function Stats() {
-  const tasks = useTaskStore((s) => s.tasks)
-  const agents = useAgentStore((s) => Object.values(s.agents))
+  const result = useAnalysisStore(s => s.result)
 
-  // Calculate stats from tasks
-  const completedTasks = tasks.filter((t) => t.status === 'approved' || t.status === 'rejected')
-  const approvedTasks = tasks.filter((t) => t.status === 'approved')
-  const rejectedTasks = tasks.filter((t) => t.status === 'rejected')
-  const totalSpent = tasks.reduce((sum, t) => sum + (t.cost ?? 0), 0)
-
-  // Estimate hours saved (~15 min per task average)
-  const hoursSaved = (completedTasks.length * 15) / 60
-
-  // Estimate lines generated (~50 lines per subtask average)
-  const linesGenerated = tasks.reduce(
-    (sum, t) => sum + (t.subtasks?.length ?? 1) * 50,
-    0
-  )
-
-  const approvalRate =
-    completedTasks.length > 0
-      ? Math.round((approvedTasks.length / completedTasks.length) * 100)
-      : 0
-
-  // Streak: count consecutive days with completed tasks (simplified)
-  const streak = calculateStreak(completedTasks.map((t) => t.completedAt ?? t.createdAt))
-
-  // Weekly breakdown
-  const now = Date.now()
-  const weekMs = 7 * 24 * 60 * 60 * 1000
-  const weekTasks = completedTasks.filter(
-    (t) => (t.completedAt ?? t.createdAt) > now - weekMs
-  )
-
-  // Agent performance
-  const agentStats = new Map<string, { completed: number; approved: number }>()
-  for (const task of completedTasks) {
-    const model = task.model?.split('/').pop() ?? 'Auto'
-    const stat = agentStats.get(model) ?? { completed: 0, approved: 0 }
-    stat.completed++
-    if (task.status === 'approved') stat.approved++
-    agentStats.set(model, stat)
+  if (!result) {
+    return (
+      <div className="h-full flex flex-col px-6 pb-6 overflow-y-auto">
+        <div className="mb-6">
+          <h1 className="text-xl font-bold text-white mb-1">Comparison</h1>
+          <p className="text-sm text-surface-500">Run an analysis to compare remediation strategies</p>
+        </div>
+        <div className="bg-surface-900 border border-surface-800 border-dashed rounded-card p-12 text-center">
+          <p className="text-sm text-surface-500">No analysis results yet. Go to Dashboard to run an analysis.</p>
+        </div>
+      </div>
+    )
   }
 
-  const agentPerformance = [...agentStats.entries()]
-    .map(([name, stat]) => ({
-      name,
-      ...stat,
-      rate: stat.completed > 0 ? Math.round((stat.approved / stat.completed) * 100) : 0
-    }))
-    .sort((a, b) => b.completed - a.completed)
+  const { simulation, graph } = result
+  const optimalCurve = simulation.optimalCurve
+  const naiveCurve = simulation.naiveCurve
+
+  // Calculate savings at each step
+  const savingsData = optimalCurve.map((opt, i) => {
+    const naive = naiveCurve[i] ?? opt
+    const saving = naive - opt
+    return {
+      step: i,
+      saving: Math.round(saving * 1000) / 10,
+      optRisk: Math.round(opt * 100),
+      naiveRisk: Math.round(naive * 100),
+    }
+  })
+
+  const maxSaving = Math.max(...savingsData.map(d => d.saving))
+  const maxSavingStep = savingsData.find(d => d.saving === maxSaving)
+
+  // Compare orderings
+  const optimalOrder = simulation.optimalOrder
+  const naiveOrder = simulation.naiveOrder
 
   return (
     <div className="h-full flex flex-col px-6 pb-6 overflow-y-auto">
+      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white mb-1">Stats</h1>
-        <p className="text-sm text-surface-500">Your AI workforce performance</p>
+        <h1 className="text-xl font-bold text-white mb-1">Comparison</h1>
+        <p className="text-sm text-surface-500">
+          FAVR optimized ordering vs naive CVSS severity sort
+        </p>
       </div>
 
-      {/* Hero stats */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
-        {[
-          { label: 'Tasks Done', value: String(completedTasks.length), sub: `${tasks.length} total` },
-          { label: 'Hours Saved', value: `~${hoursSaved.toFixed(1)}`, sub: '15 min/task avg' },
-          { label: 'Lines Generated', value: formatNumber(linesGenerated), sub: '~50/subtask' },
-          { label: 'Approval Rate', value: `${approvalRate}%`, sub: `${approvedTasks.length} approved` },
-          { label: 'Streak', value: `${streak}d`, sub: streak > 0 ? 'Keep it up!' : 'Submit a task' }
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="bg-surface-900 border border-surface-800 rounded-card p-4 flex flex-col gap-1"
-          >
-            <span className="text-[10px] font-bold text-surface-500 uppercase tracking-wider">
-              {stat.label}
-            </span>
-            <span className="text-2xl font-bold text-white">{stat.value}</span>
-            <span className="text-[11px] text-surface-500">{stat.sub}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* This Week */}
+      {/* Key insight */}
       <div className="bg-surface-900 border border-surface-800 rounded-card p-5 mb-6">
-        <span className="text-[10px] font-bold text-surface-500 uppercase tracking-[0.2em] block mb-4">
-          This Week
-        </span>
-        <div className="grid grid-cols-4 gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-lg font-bold text-white">{weekTasks.length}</span>
-            <span className="text-[10px] text-surface-500">Tasks completed</span>
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+            <span className="text-2xl font-black text-green-400">{maxSaving.toFixed(1)}%</span>
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-lg font-bold text-white">
-              ${weekTasks.reduce((s, t) => s + (t.cost ?? 0), 0).toFixed(2)}
-            </span>
-            <span className="text-[10px] text-surface-500">Spent</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-lg font-bold text-white">
-              {weekTasks.filter((t) => t.status === 'approved').length}
-            </span>
-            <span className="text-[10px] text-surface-500">Approved</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-lg font-bold text-white">
-              {weekTasks.filter((t) => t.status === 'rejected').length}
-            </span>
-            <span className="text-[10px] text-surface-500">Rejected</span>
+          <div>
+            <div className="text-sm font-bold text-white mb-1">Maximum Risk Reduction Advantage</div>
+            <p className="text-xs text-surface-400">
+              At step {maxSavingStep?.step ?? 0} of {optimalCurve.length - 1} patches, FAVR's dependency-aware
+              ordering achieves {maxSaving.toFixed(1)}% more risk reduction than simple CVSS severity sorting.
+              This demonstrates the value of Bayesian propagation and Monte Carlo optimization.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Activity visualization — 7-day bar chart */}
-      <div className="bg-surface-900 border border-surface-800 rounded-card p-5 mb-6">
-        <span className="text-[10px] font-bold text-surface-500 uppercase tracking-[0.2em] block mb-4">
-          Daily Activity
-        </span>
-        <div className="flex items-end gap-2 h-24">
-          {getLast7Days().map((day) => {
-            const dayTasks = completedTasks.filter((t) => {
-              const ts = t.completedAt ?? t.createdAt
-              return isSameDay(ts, day.timestamp)
-            })
-            const maxTasks = Math.max(1, ...getLast7Days().map((d) =>
-              completedTasks.filter((t) => isSameDay(t.completedAt ?? t.createdAt, d.timestamp)).length
-            ))
-            const height = dayTasks.length > 0 ? Math.max(8, (dayTasks.length / maxTasks) * 100) : 4
+      {/* Before/After Bar Chart */}
+      <div className="mb-6">
+        <BeforeAfterBar />
+      </div>
 
-            return (
-              <div key={day.label} className="flex-1 flex flex-col items-center gap-2">
-                <div className="w-full flex justify-center">
-                  <div
-                    className={`w-full max-w-[28px] rounded-sm transition-all ${
-                      dayTasks.length > 0 ? 'bg-white' : 'bg-surface-800'
-                    }`}
-                    style={{ height: `${height}%` }}
-                  />
+      {/* Side-by-side ordering */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        {/* FAVR Optimal */}
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-green-400" />
+            <h3 className="text-sm font-bold text-white">FAVR Optimal Order</h3>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {optimalOrder.map((vulnId, i) => {
+              const vuln = graph.vulnerabilities.find(v => v.id === vulnId)
+              if (!vuln) return null
+              const ci = simulation.confidenceIntervals[i]
+              return (
+                <div key={vulnId} className="flex items-center gap-2 bg-surface-800/30 rounded-btn px-3 py-2">
+                  <span className="text-[10px] font-mono text-surface-600 w-5 text-right">{i + 1}</span>
+                  <SeverityDot severity={vuln.severity} />
+                  <span className="text-xs text-white flex-1 truncate">{vuln.cveId}</span>
+                  <span className="text-[10px] text-surface-500 font-mono">{vuln.cvssScore.toFixed(1)}</span>
+                  {ci && (
+                    <span className="text-[10px] text-surface-600 font-mono">{Math.round(ci.frequency * 100)}%</span>
+                  )}
                 </div>
-                <span className="text-[9px] font-mono text-surface-600">{day.label}</span>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Naive CVSS Sort */}
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-red-400" />
+            <h3 className="text-sm font-bold text-white">Naive CVSS Sort</h3>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {naiveOrder.map((vulnId, i) => {
+              const vuln = graph.vulnerabilities.find(v => v.id === vulnId)
+              if (!vuln) return null
+              // Check if position differs from optimal
+              const optPos = optimalOrder.indexOf(vulnId)
+              const diff = optPos - i
+              return (
+                <div key={vulnId} className="flex items-center gap-2 bg-surface-800/30 rounded-btn px-3 py-2">
+                  <span className="text-[10px] font-mono text-surface-600 w-5 text-right">{i + 1}</span>
+                  <SeverityDot severity={vuln.severity} />
+                  <span className="text-xs text-white flex-1 truncate">{vuln.cveId}</span>
+                  <span className="text-[10px] text-surface-500 font-mono">{vuln.cvssScore.toFixed(1)}</span>
+                  {diff !== 0 && (
+                    <span className={`text-[10px] font-mono ${diff < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {diff > 0 ? `+${diff}` : diff}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Step-by-step risk comparison table */}
+      <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+        <h3 className="text-sm font-bold text-white mb-3">Step-by-Step Risk Comparison</h3>
+        <div className="grid gap-1">
+          {/* Header */}
+          <div className="grid grid-cols-5 gap-2 px-3 py-2 text-[10px] font-bold text-surface-500 uppercase tracking-wider">
+            <div>Step</div>
+            <div>CVE Patched</div>
+            <div className="text-right">FAVR Risk</div>
+            <div className="text-right">Naive Risk</div>
+            <div className="text-right">Advantage</div>
+          </div>
+          {savingsData.slice(1).map((row, i) => {
+            const vuln = graph.vulnerabilities.find(v => v.id === optimalOrder[i])
+            return (
+              <div
+                key={i}
+                className={`grid grid-cols-5 gap-2 px-3 py-2 rounded-btn ${
+                  row.saving > 0 ? 'bg-green-500/5' : ''
+                }`}
+              >
+                <div className="text-xs text-surface-400">{row.step}</div>
+                <div className="text-xs text-white truncate">{vuln?.cveId ?? '—'}</div>
+                <div className="text-xs text-green-400 text-right font-mono">{row.optRisk}%</div>
+                <div className="text-xs text-red-400 text-right font-mono">{row.naiveRisk}%</div>
+                <div className={`text-xs text-right font-mono font-bold ${
+                  row.saving > 0 ? 'text-green-400' : 'text-surface-600'
+                }`}>
+                  {row.saving > 0 ? `${row.saving}%` : '—'}
+                </div>
               </div>
             )
           })}
         </div>
       </div>
-
-      {/* Agent Performance */}
-      <div className="bg-surface-900 border border-surface-800 rounded-card p-5">
-        <span className="text-[10px] font-bold text-surface-500 uppercase tracking-[0.2em] block mb-4">
-          Agent Performance
-        </span>
-        {agentPerformance.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {agentPerformance.map((agent) => (
-              <div key={agent.name} className="flex items-center gap-4">
-                <span className="text-sm font-semibold text-white w-32 truncate">{agent.name}</span>
-                <div className="flex-1 h-2 bg-surface-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-white rounded-full"
-                    style={{ width: `${agent.rate}%` }}
-                  />
-                </div>
-                <span className="text-xs font-mono text-surface-400 w-10 text-right">
-                  {agent.rate}%
-                </span>
-                <span className="text-[10px] text-surface-600 w-16 text-right">
-                  {agent.completed} tasks
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-surface-500">No agent data yet. Complete some tasks to see performance.</p>
-        )}
-      </div>
     </div>
   )
 }
 
-// ── Helpers ────────────────────────────────────────────────────
-
-function calculateStreak(timestamps: number[]): number {
-  if (timestamps.length === 0) return 0
-
-  const days = new Set(timestamps.map((ts) => new Date(ts).toDateString()))
-  let streak = 0
-  const today = new Date()
-
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(today)
-    d.setDate(d.getDate() - i)
-    if (days.has(d.toDateString())) {
-      streak++
-    } else if (i > 0) {
-      break // Gap found
-    }
-    // i === 0 and not in set means no tasks today, but might still have yesterday
+function SeverityDot({ severity }: { severity: string }) {
+  const colors: Record<string, string> = {
+    critical: 'bg-red-400',
+    high: 'bg-orange-400',
+    medium: 'bg-amber-400',
+    low: 'bg-blue-400',
   }
-
-  return streak
-}
-
-function formatNumber(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
-  return String(n)
-}
-
-function getLast7Days(): { label: string; timestamp: number }[] {
-  const days: { label: string; timestamp: number }[] = []
-  const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    d.setHours(0, 0, 0, 0)
-    days.push({ label: labels[d.getDay()], timestamp: d.getTime() })
-  }
-  return days
-}
-
-function isSameDay(ts: number, dayStart: number): boolean {
-  const d = new Date(ts)
-  d.setHours(0, 0, 0, 0)
-  return d.getTime() === dayStart
+  return <div className={`w-2 h-2 rounded-full shrink-0 ${colors[severity] ?? 'bg-surface-600'}`} />
 }

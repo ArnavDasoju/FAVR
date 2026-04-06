@@ -5,9 +5,7 @@ import AgentRoster from './components/AgentRoster'
 import FlowsView from './components/FlowsView'
 import BudgetView from './components/BudgetView'
 import Settings from './components/Settings'
-import Credits from './components/Credits'
 import Stats from './components/Stats'
-import PiPWindow from './components/PiPWindow'
 import { useIpcListeners } from './hooks/useIpc'
 
 declare global {
@@ -55,35 +53,21 @@ export default function App() {
         return <Dashboard />
       case 'agents':
         return <AgentRoster />
-      case 'flows':
+      case 'vulnerabilities':
         return <FlowsView />
-      case 'budget':
+      case 'analysis':
         return <BudgetView />
-      case 'credits':
-        return <Credits />
-      case 'stats':
+      case 'comparison':
         return <Stats />
       case 'settings':
         return <Settings />
     }
   }
 
-  const handlePiPExpand = (agentId: string) => {
-    setActiveView('dashboard')
-    // Dashboard will pick up the agent expansion from its own state
-  }
-
   return (
     <div className="h-full w-full flex bg-surface-950">
-      <Sidebar
-        activeView={activeView}
-        onNavigate={setActiveView}
-        budget={{ spent: 23.40, limit: 50 }}
-        agentCount={3}
-        activeFlows={1}
-      />
+      <Sidebar activeView={activeView} onNavigate={setActiveView} />
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Titlebar drag region for main content area */}
         <div className="titlebar-drag h-12 shrink-0" />
         <div className="flex-1 overflow-hidden">
           <ViewErrorBoundary key={activeView}>
@@ -91,11 +75,6 @@ export default function App() {
           </ViewErrorBoundary>
         </div>
       </div>
-
-      {/* PiP — shows when not on dashboard and agents are active */}
-      {activeView !== 'dashboard' && (
-        <PiPWindow onExpand={handlePiPExpand} />
-      )}
     </div>
   )
 }
