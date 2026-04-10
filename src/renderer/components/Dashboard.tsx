@@ -22,11 +22,13 @@ export default function Dashboard() {
 
   const [codebasePath, setCodebasePath] = useState('')
   const [loading, setLoading] = useState(false)
+  const [scanStats, setScanStats] = useState<{ servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[] } | null>(null)
 
   const isRunning = phase !== 'idle' && phase !== 'complete' && phase !== 'error'
 
   async function handleLoadDemo() {
     setLoading(true)
+    setScanStats(null)
     try {
       await window.api.invoke('analysis:loadDemo')
     } catch (err) {
@@ -38,6 +40,7 @@ export default function Dashboard() {
   async function handleRunAnalysis() {
     const uploadedFiles = useAnalysisStore.getState().uploadedFiles
     setLoading(true)
+    setScanStats(null)
     try {
       await window.api.invoke('analysis:run', {
         filePaths: uploadedFiles.length > 0 ? uploadedFiles : undefined,
@@ -46,6 +49,23 @@ export default function Dashboard() {
       })
     } catch (err) {
       console.error('Analysis failed:', err)
+    }
+    setLoading(false)
+  }
+
+  async function handleScanCodebase() {
+    if (!codebasePath) return
+    setLoading(true)
+    setScanStats(null)
+    useAnalysisStore.getState().reset()
+    try {
+      const result = await window.api.invoke('analysis:analyzeCodebase', {
+        codebasePath,
+        iterations: 5000
+      }) as { stats: typeof scanStats }
+      if (result?.stats) setScanStats(result.stats)
+    } catch (err) {
+      console.error('Codebase scan failed:', err)
     }
     setLoading(false)
   }
@@ -83,8 +103,8 @@ export default function Dashboard() {
                   : 'bg-surface-900 border-surface-800 text-surface-400 hover:border-surface-700'
               }`}
             >
-              <div className="text-sm font-bold mb-1">Analysis Only</div>
-              <div className="text-[10px] text-surface-500">Upload docs → Prioritize → Report</div>
+              <div className="text-sm font-bold mb-1">Scan Codebase</div>
+              <div className="text-[10px] text-surface-500">Point at a project → Auto-discover vulns</div>
             </button>
             <button
               onClick={() => setMode('remediation')}
@@ -94,32 +114,19 @@ export default function Dashboard() {
                   : 'bg-surface-900 border-surface-800 text-surface-400 hover:border-surface-700'
               }`}
             >
-              <div className="text-sm font-bold mb-1">Full Remediation</div>
-              <div className="text-[10px] text-surface-500">Analysis + Agents patch the code</div>
+              <div className="text-sm font-bold mb-1">Upload Documents</div>
+              <div className="text-[10px] text-surface-500">CVE feeds, advisories → Prioritize → Report</div>
             </button>
           </div>
 
-          {/* Document Upload */}
-          <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-4">
-            <div className="text-xs font-bold text-white mb-2">Upload Documents</div>
-            <p className="text-[10px] text-surface-500 mb-3">CVE feeds, vendor advisories, dependency maps (JSON, TXT, MD)</p>
-            <button
-              onClick={handleUploadDocs}
-              className="w-full border-2 border-dashed border-surface-700 rounded-btn p-6 text-surface-500 text-xs hover:border-surface-500 hover:text-surface-300 transition-colors"
-            >
-              Click to upload documents
-            </button>
-            {useAnalysisStore.getState().uploadedFiles.length > 0 && (
-              <div className="mt-2 text-[10px] text-green-400">
-                {useAnalysisStore.getState().uploadedFiles.length} file(s) uploaded
-              </div>
-            )}
-          </div>
-
-          {/* Codebase Path (Mode 2 only) */}
-          {mode === 'remediation' && (
+          {/* Scan Codebase (primary flow) */}
+          {mode === 'analysis' && (
             <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-4">
-              <div className="text-xs font-bold text-white mb-2">Codebase Directory</div>
+              <div className="text-xs font-bold text-white mb-2">Project Directory</div>
+              <p className="text-[10px] text-surface-500 mb-3">
+                Select a codebase to auto-discover services, dependencies, and vulnerabilities.
+                Supports Node.js, Python, Go, Rust, Java, and Ruby.
+              </p>
               <div className="flex gap-2">
                 <input
                   value={codebasePath}
@@ -134,25 +141,87 @@ export default function Dashboard() {
                   Browse
                 </button>
               </div>
+              {codebasePath && (
+                <div className="mt-2 text-[10px] text-surface-500 font-mono truncate">{codebasePath}</div>
+              )}
             </div>
+          )}
+
+          {/* Document Upload (secondary flow) */}
+          {mode === 'remediation' && (
+            <>
+              <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-4">
+                <div className="text-xs font-bold text-white mb-2">Upload Documents</div>
+                <p className="text-[10px] text-surface-500 mb-3">CVE feeds, vendor advisories, dependency maps (JSON, TXT, MD)</p>
+                <button
+                  onClick={handleUploadDocs}
+                  className="w-full border-2 border-dashed border-surface-700 rounded-btn p-6 text-surface-500 text-xs hover:border-surface-500 hover:text-surface-300 transition-colors"
+                >
+                  Click to upload documents
+                </button>
+                {useAnalysisStore.getState().uploadedFiles.length > 0 && (
+                  <div className="mt-2 text-[10px] text-green-400">
+                    {useAnalysisStore.getState().uploadedFiles.length} file(s) uploaded
+                  </div>
+                )}
+              </div>
+              <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-4">
+                <div className="text-xs font-bold text-white mb-2">Codebase Directory (optional)</div>
+                <div className="flex gap-2">
+                  <input
+                    value={codebasePath}
+                    onChange={(e) => setCodebasePath(e.target.value)}
+                    placeholder="Path to your project..."
+                    className="flex-1 bg-surface-800 border border-surface-700 rounded-btn px-3 py-2 text-xs text-white placeholder:text-surface-600 focus:outline-none focus:border-surface-500"
+                  />
+                  <button
+                    onClick={handleBrowseCodebase}
+                    className="bg-surface-800 border border-surface-700 rounded-btn px-3 py-2 text-xs text-surface-300 hover:bg-surface-700"
+                  >
+                    Browse
+                  </button>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Actions */}
           <div className="flex gap-3">
-            <button
-              onClick={handleLoadDemo}
-              disabled={loading}
-              className="flex-1 bg-surface-800 border border-surface-700 text-white font-bold text-sm py-3 rounded-btn hover:bg-surface-700 disabled:opacity-50 transition-colors"
-            >
-              Load Demo Scenario
-            </button>
-            <button
-              onClick={handleRunAnalysis}
-              disabled={loading}
-              className="flex-1 bg-white text-black font-bold text-sm py-3 rounded-btn hover:bg-surface-200 disabled:opacity-50 transition-colors"
-            >
-              Run Analysis
-            </button>
+            {mode === 'analysis' ? (
+              <>
+                <button
+                  onClick={handleLoadDemo}
+                  disabled={loading}
+                  className="bg-surface-800 border border-surface-700 text-surface-300 font-bold text-sm py-3 px-6 rounded-btn hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                >
+                  Demo
+                </button>
+                <button
+                  onClick={handleScanCodebase}
+                  disabled={loading || !codebasePath}
+                  className="flex-1 bg-white text-black font-bold text-sm py-3 rounded-btn hover:bg-surface-200 disabled:opacity-50 transition-colors"
+                >
+                  Scan Codebase
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={handleLoadDemo}
+                  disabled={loading}
+                  className="bg-surface-800 border border-surface-700 text-surface-300 font-bold text-sm py-3 px-6 rounded-btn hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                >
+                  Demo
+                </button>
+                <button
+                  onClick={handleRunAnalysis}
+                  disabled={loading}
+                  className="flex-1 bg-white text-black font-bold text-sm py-3 rounded-btn hover:bg-surface-200 disabled:opacity-50 transition-colors"
+                >
+                  Run Analysis
+                </button>
+              </>
+            )}
           </div>
 
           {error && (
@@ -190,8 +259,8 @@ export default function Dashboard() {
   }
 
   // ─── Results ────────────────────────────────────────────
-  const totalRisk = Math.round(result!.simulation.totalRiskBefore * 100)
-  const reduction = Math.round(result!.simulation.riskReduction)
+  const totalRisk = Math.round((result!.simulation.totalRiskBefore ?? 0) * 100)
+  const reduction = Math.round(result!.simulation.riskReduction ?? 0)
   const vulnCount = result!.graph.vulnerabilities.length
   const critCount = result!.graph.vulnerabilities.filter(v => v.severity === 'critical').length
   const complianceRisk = result!.complianceSummary ? Math.round(result!.complianceSummary.overallComplianceRisk * 100) : 0
