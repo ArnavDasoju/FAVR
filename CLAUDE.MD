@@ -1,14 +1,100 @@
-# BLD Build Spec
+# FAVR — Hackathon Game Plan
 
-## Overview
+## What FAVR Is
 
-BLD is mission control for AI coding agents. A **workspace** where you manage a roster of AI agents like a portfolio — assign them to flows, set budgets, and optimize allocation across tasks. Think portfolio optimization but for AI workers.
+FAVR (Flexible Attack Vector Risk) is a **desktop app that scans any real codebase and tells you exactly which vulnerabilities to patch first, in what order, and why.** Point it at a project directory → it auto-discovers services, maps dependencies, queries real CVE databases, then runs a full mathematical analysis pipeline (Bayesian risk propagation, Monte Carlo simulation, Pareto optimization) to produce an optimal patching strategy.
 
-**Not an IDE.** Users keep their existing IDE open. BLD is a companion that dispatches tasks, shows live agent activity, validates results, and pings your phone when needed.
+**One-liner:** "Point at your codebase. Get a mathematically optimal patching plan in 30 seconds."
 
 ## The Pitch
 
-> "See all your AI agents working in real-time. Get pinged when they need you. Approve from your phone."
+> "Stop patching by CVSS score. FAVR uses attack graph modeling, Bayesian risk propagation, and Monte Carlo simulation to find the patch order that actually reduces your risk the fastest — automatically, from your real codebase."
+
+---
+
+## HACKATHON PRIORITIES — What We Need To Win
+
+### The Demo Flow (this is what judges see)
+
+1. Open FAVR → clean dark UI, no clutter
+2. Click **Browse** → select a real project (use a known-vulnerable open source repo for max impact)
+3. Click **Scan Codebase** → watch real-time progress:
+   - "Found 5 services..." → "Queried 47 packages..." → "Found 12 vulnerabilities..."
+   - Attack graph building → Bayesian propagation → Monte Carlo simulation → done
+4. Results dashboard appears:
+   - System risk score, risk reduction %, vuln count, critical count, compliance risk
+   - **Dependency graph visualization** (D3 force-directed)
+   - **Service heatmap** showing propagated risk
+   - **Top 5 priority patches** with CVSS vs EPSS divergence highlighted
+   - Compliance deadline alerts (PCI-DSS, HIPAA, etc.)
+5. Show **What-If scenarios** — "What if we only have 20 hours of budget?" → see residual risk
+6. **Export HTML report** — one-click professional report
+
+### Key Differentiators to Emphasize
+
+| What We Do | What Others Do |
+|------------|----------------|
+| Scan real codebases automatically | Require manual CVE input |
+| Model risk propagation through dependencies | Treat each CVE independently |
+| Monte Carlo optimal patch ordering | Sort by CVSS (proven suboptimal) |
+| Real EPSS scores from FIRST.org | Static severity ratings |
+| Pareto optimization (risk vs cost vs downtime) | Single-dimensional ranking |
+| Maintenance-window-aware scheduling | "Just patch everything now" |
+| Compliance deadline tracking | No compliance awareness |
+
+### What's Built (Status: ~95% Complete)
+
+**Fully working:**
+- Codebase auto-analyzer (Node.js, Python, Go, Rust, Java, Ruby)
+- OSV.dev real-time vulnerability lookup (free, no API key)
+- EPSS enrichment from FIRST.org
+- Full 7-phase analysis engine
+- All 6 chart visualizations (dependency graph, heatmap, severity donut, Pareto frontier, risk curves, before/after)
+- What-If scenario modeling
+- HTML report export
+- Hardcoded Meridian Financial demo scenario (fallback)
+- Dark theme UI with all views
+
+**Deferred (not needed for demo):**
+- Sound notifications
+- Mobile push notifications (React Native)
+- Cloud sync for Pro users
+- Stripe payment integration (credits system is built but not connected to real Stripe)
+
+### What Could Go Wrong + Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| OSV.dev API is slow/down | Demo with Meridian scenario as backup (always works offline) |
+| Scanned project has zero CVEs | Pre-test the demo project; have a known-vulnerable repo ready |
+| Analysis takes too long | Default 5000 iterations is fast (~2-3 sec); reduce if needed |
+| Charts don't render right | D3 charts are solid; test before demo |
+
+### Suggested Demo Projects
+
+For maximum impact, scan a project with **known vulnerabilities**:
+- Any older Node.js project with `express@4.18.x`, `axios@1.5.x`, etc.
+- A Python project with `flask@2.x`, `werkzeug@2.x`, older `django`
+- A Go project with older `golang.org/x/net`
+- Or just use the **Meridian Financial demo** — it has 15 real CVEs already mapped
+
+### Pre-Demo Checklist
+
+- [ ] `npm run dev` starts clean with no errors
+- [ ] "Scan Codebase" flow works end-to-end on the demo project
+- [ ] All 6 charts render correctly
+- [ ] What-If view works
+- [ ] Report export produces a clean HTML file
+- [ ] Demo scenario ("Demo" button) works as offline fallback
+- [ ] Know the talking points: "CVSS is not enough", "risk propagation matters", "EPSS vs CVSS divergence"
+
+---
+
+# Technical Spec (Full Reference)
+
+## BLD Layer Overview
+
+BLD is the underlying platform — mission control for AI coding agents. FAVR is the primary feature built on top: vulnerability analysis and prioritization. The BLD layer handles agent orchestration, task chunking, validation, and the Electron shell.
 
 ---
 

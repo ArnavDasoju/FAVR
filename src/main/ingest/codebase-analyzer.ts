@@ -214,6 +214,14 @@ function discoverServices(projectDir: string): DiscoveredService[] {
 
   walk(projectDir, 0)
 
+  // Fallback: if no manifest-based services found, check for source-file-only projects
+  if (services.length === 0) {
+    const fallback = parseSourceOnlyService(projectDir)
+    if (fallback) {
+      services.push(fallback)
+    }
+  }
+
   // Deduplicate services with identical paths
   const uniqueById = new Map<string, DiscoveredService>()
   for (const s of services) {
@@ -221,6 +229,241 @@ function discoverServices(projectDir: string): DiscoveredService[] {
   }
 
   return Array.from(uniqueById.values())
+}
+
+/**
+ * Fallback: detect a service from source files alone (no manifest).
+ * Scans for .py/.js/.ts/.go files and extracts imports.
+ */
+function parseSourceOnlyService(dir: string): DiscoveredService | null {
+  const sourceExts: Record<string, Ecosystem> = {
+    '.py': 'PyPI',
+    '.js': 'npm',
+    '.ts': 'npm',
+    '.go': 'Go',
+    '.rs': 'crates.io',
+    '.java': 'Maven',
+    '.rb': 'RubyGems'
+  }
+
+  let names: string[]
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return null
+  }
+
+  // Collect all source files (including one level of subdirs)
+  const sourceFilesByEcosystem = new Map<Ecosystem, string[]>()
+  for (const name of names) {
+    if (shouldSkipDir(name)) continue
+    const ext = Object.keys(sourceExts).find(e => name.endsWith(e))
+    if (ext) {
+      const eco = sourceExts[ext]
+      const existing = sourceFilesByEcosystem.get(eco) ?? []
+      existing.push(name)
+      sourceFilesByEcosystem.set(eco, existing)
+    } else {
+      // Check one level deep for source files in subdirs
+      const subPath = join(dir, name)
+      try {
+        if (statSync(subPath).isDirectory()) {
+          const subNames = readdirSync(subPath)
+          for (const subName of subNames) {
+            const subExt = Object.keys(sourceExts).find(e => subName.endsWith(e))
+            if (subExt) {
+              const eco = sourceExts[subExt]
+              const existing = sourceFilesByEcosystem.get(eco) ?? []
+              existing.push(join(name, subName))
+              sourceFilesByEcosystem.set(eco, existing)
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  if (sourceFilesByEcosystem.size === 0) return null
+
+  // Pick the dominant ecosystem (most source files)
+  let dominantEco: Ecosystem = 'npm'
+  let maxFiles = 0
+  for (const [eco, files] of sourceFilesByEcosystem) {
+    if (files.length > maxFiles) {
+      maxFiles = files.length
+      dominantEco = eco
+    }
+  }
+
+  const projectName = basename(dir)
+  const id = slugify(projectName)
+
+  const service: DiscoveredService = {
+    id,
+    name: projectName,
+    path: '.',
+    ecosystem: dominantEco,
+    packages: [],
+    techStack: [],
+    hasDockerfile: existsSync(join(dir, 'Dockerfile')),
+    envVars: parseEnvFile(dir)
+  }
+
+  const sourceFiles = sourceFilesByEcosystem.get(dominantEco) ?? []
+
+  if (dominantEco === 'PyPI') {
+    service.techStack.push('Python')
+    const imports = extractPythonImports(dir, sourceFiles)
+    for (const imp of imports) {
+      service.packages.push({ name: imp, version: '0.0.0', ecosystem: 'PyPI', isDev: false })
+      service.techStack.push(imp)
+    }
+  } else if (dominantEco === 'npm') {
+    service.techStack.push('JavaScript')
+    const imports = extractJsImports(dir, sourceFiles)
+    for (const imp of imports) {
+      service.packages.push({ name: imp, version: '0.0.0', ecosystem: 'npm', isDev: false })
+      service.techStack.push(imp)
+    }
+  } else if (dominantEco === 'Go') {
+    service.techStack.push('Go')
+  } else if (dominantEco === 'crates.io') {
+    service.techStack.push('Rust')
+  } else if (dominantEco === 'Maven') {
+    service.techStack.push('Java')
+  } else if (dominantEco === 'RubyGems') {
+    service.techStack.push('Ruby')
+  }
+
+  // Always return the service even without packages — it's a valid project
+  return service
+}
+
+/**
+ * Extract third-party import names from Python files.
+ * Filters out standard library modules.
+ */
+function extractPythonImports(dir: string, pyFiles: string[]): string[] {
+  const imports = new Set<string>()
+
+  // Comprehensive Python stdlib set (3.10+)
+  const stdlib = new Set([
+    'abc', 'aifc', 'argparse', 'array', 'ast', 'asyncio', 'atexit',
+    'base64', 'binascii', 'bisect', 'builtins', 'bz2',
+    'calendar', 'cgi', 'cgitb', 'chunk', 'cmath', 'cmd', 'code', 'codecs',
+    'codeop', 'collections', 'colorsys', 'compileall', 'concurrent',
+    'configparser', 'contextlib', 'contextvars', 'copy', 'copyreg',
+    'cProfile', 'csv', 'ctypes', 'curses',
+    'dataclasses', 'datetime', 'dbm', 'decimal', 'difflib', 'dis',
+    'distutils', 'doctest',
+    'email', 'encodings', 'enum', 'errno',
+    'faulthandler', 'fcntl', 'filecmp', 'fileinput', 'fnmatch',
+    'formatter', 'fractions', 'ftplib', 'functools',
+    'gc', 'getopt', 'getpass', 'gettext', 'glob', 'graphlib', 'grp', 'gzip',
+    'hashlib', 'heapq', 'hmac', 'html', 'http',
+    'idlelib', 'imaplib', 'imghdr', 'imp', 'importlib', 'inspect', 'io',
+    'ipaddress', 'itertools',
+    'json',
+    'keyword',
+    'lib2to3', 'linecache', 'locale', 'logging', 'lzma',
+    'mailbox', 'mailcap', 'marshal', 'math', 'mimetypes', 'mmap',
+    'modulefinder', 'multiprocessing', 'msvcrt',
+    'netrc', 'nis', 'nntplib', 'numbers',
+    'operator', 'optparse', 'os', 'ossaudiodev',
+    'pathlib', 'pdb', 'pickle', 'pickletools', 'pipes', 'pkgutil',
+    'platform', 'plistlib', 'poplib', 'posix', 'posixpath', 'pprint',
+    'profile', 'pstats', 'pty', 'pwd', 'py_compile', 'pyclbr',
+    'pydoc',
+    'queue', 'quopri',
+    'random', 're', 'readline', 'reprlib', 'resource', 'rlcompleter',
+    'runpy',
+    'sched', 'secrets', 'select', 'selectors', 'shelve', 'shlex',
+    'shutil', 'signal', 'site', 'smtpd', 'smtplib', 'sndhdr',
+    'socket', 'socketserver', 'sqlite3', 'ssl', 'stat', 'statistics',
+    'string', 'stringprep', 'struct', 'subprocess', 'sunau', 'symtable',
+    'sys', 'sysconfig', 'syslog',
+    'tabnanny', 'tarfile', 'telnetlib', 'tempfile', 'termios', 'test',
+    'textwrap', 'threading', 'time', 'timeit', 'tkinter', 'token',
+    'tokenize', 'tomllib', 'trace', 'traceback', 'tracemalloc', 'tty',
+    'turtle', 'turtledemo', 'types', 'typing',
+    'unicodedata', 'unittest', 'urllib', 'uu', 'uuid',
+    'venv',
+    'warnings', 'wave', 'weakref', 'webbrowser', 'winreg', 'winsound',
+    'wsgiref',
+    'xdrlib', 'xml', 'xmlrpc',
+    'zipapp', 'zipfile', 'zipimport', 'zlib',
+    '_thread', '__future__'
+  ])
+
+  // Also skip relative imports (starting with .)
+  for (const file of pyFiles) {
+    try {
+      const content = readFileSync(join(dir, file), 'utf-8')
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('#')) continue
+
+        // import foo / import foo.bar / import foo as f
+        const importMatch = trimmed.match(/^import\s+([a-zA-Z_][a-zA-Z0-9_]*)/)
+        if (importMatch && !stdlib.has(importMatch[1])) {
+          imports.add(importMatch[1])
+        }
+
+        // from foo import bar / from foo.bar import baz
+        const fromMatch = trimmed.match(/^from\s+([a-zA-Z_][a-zA-Z0-9_]*)/)
+        if (fromMatch && !stdlib.has(fromMatch[1])) {
+          imports.add(fromMatch[1])
+        }
+      }
+    } catch { /* skip unreadable files */ }
+  }
+
+  return Array.from(imports)
+}
+
+/**
+ * Extract third-party import/require names from JS/TS files.
+ * Filters out Node.js built-in modules and relative imports.
+ */
+function extractJsImports(dir: string, jsFiles: string[]): string[] {
+  const imports = new Set<string>()
+  const builtins = new Set([
+    'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants',
+    'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2',
+    'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks',
+    'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
+    'string_decoder', 'sys', 'timers', 'tls', 'tty', 'url', 'util', 'v8',
+    'vm', 'wasi', 'worker_threads', 'zlib'
+  ])
+
+  for (const file of jsFiles) {
+    try {
+      const content = readFileSync(join(dir, file), 'utf-8')
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim()
+
+        // import ... from 'package'
+        const esmMatch = trimmed.match(/from\s+['"]([^./][^'"]*?)['"]/)
+        if (esmMatch) {
+          const pkgName = esmMatch[1].startsWith('@')
+            ? esmMatch[1].split('/').slice(0, 2).join('/')
+            : esmMatch[1].split('/')[0]
+          if (!builtins.has(pkgName)) imports.add(pkgName)
+        }
+
+        // require('package')
+        const cjsMatch = trimmed.match(/require\s*\(\s*['"]([^./][^'"]*?)['"]\s*\)/)
+        if (cjsMatch) {
+          const pkgName = cjsMatch[1].startsWith('@')
+            ? cjsMatch[1].split('/').slice(0, 2).join('/')
+            : cjsMatch[1].split('/')[0]
+          if (!builtins.has(pkgName)) imports.add(pkgName)
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  return Array.from(imports)
 }
 
 function shouldSkipDir(name: string): boolean {
