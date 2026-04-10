@@ -36,9 +36,11 @@ export default function Dashboard() {
   }
 
   async function handleRunAnalysis() {
+    const uploadedFiles = useAnalysisStore.getState().uploadedFiles
     setLoading(true)
     try {
       await window.api.invoke('analysis:run', {
+        filePaths: uploadedFiles.length > 0 ? uploadedFiles : undefined,
         codebasePath: mode === 'remediation' && codebasePath ? codebasePath : undefined,
         iterations: 5000
       })
