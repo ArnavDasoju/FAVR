@@ -15,6 +15,9 @@ interface AnalysisStore {
   // Mode
   mode: 'analysis' | 'remediation'
 
+  // Whether results have been viewed (skip re-entry animations)
+  hasSeenResults: boolean
+
   // Selected items
   selectedVulnId: string | null
   selectedServiceId: string | null
@@ -28,6 +31,7 @@ interface AnalysisStore {
   setProgress: (progress: FavrAnalysisProgress) => void
   setError: (error: string) => void
   setMode: (mode: 'analysis' | 'remediation') => void
+  markResultsSeen: () => void
   selectVuln: (id: string | null) => void
   selectService: (id: string | null) => void
   selectPareto: (id: string | null) => void
@@ -48,12 +52,14 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   message: '',
   error: null,
   mode: 'analysis',
+  hasSeenResults: false,
   selectedVulnId: null,
   selectedServiceId: null,
   selectedParetoId: null,
   uploadedFiles: [],
 
-  setResult: (result) => set({ result, phase: 'complete', progress: 100, error: null }),
+  setResult: (result) => set({ result, phase: 'complete', progress: 100, error: null, hasSeenResults: false }),
+  markResultsSeen: () => set({ hasSeenResults: true }),
   setProgress: (p) => set({ phase: p.phase as AnalysisPhase, progress: p.progress, message: p.message }),
   setError: (error) => set({ error, phase: 'error' }),
   setMode: (mode) => set({ mode }),
@@ -61,7 +67,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   selectService: (id) => set({ selectedServiceId: id }),
   selectPareto: (id) => set({ selectedParetoId: id }),
   setUploadedFiles: (files) => set({ uploadedFiles: files }),
-  reset: () => set({ result: null, phase: 'idle', progress: 0, message: '', error: null }),
+  reset: () => set({ result: null, phase: 'idle', progress: 0, message: '', error: null, hasSeenResults: false }),
 
   getVulnById: (id) => get().result?.graph.vulnerabilities.find(v => v.id === id),
   getServiceById: (id) => get().result?.graph.services.find(s => s.id === id),

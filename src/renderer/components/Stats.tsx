@@ -6,13 +6,16 @@ export default function Stats() {
 
   if (!result) {
     return (
-      <div className="h-full flex flex-col px-6 pb-6 overflow-y-auto">
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-white mb-1">Comparison</h1>
-          <p className="text-sm text-surface-500">Run an analysis to compare remediation strategies</p>
-        </div>
-        <div className="bg-surface-900 border border-surface-800 border-dashed rounded-card p-12 text-center">
-          <p className="text-sm text-surface-500">No analysis results yet. Go to Dashboard to run an analysis.</p>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 rounded-2xl bg-surface-900 border border-surface-800 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-surface-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-white mb-1">No Comparison Data</h2>
+          <p className="text-sm text-surface-500 leading-relaxed">Run an analysis from the Dashboard to compare FAVR's optimized patch ordering against naive CVSS severity sorting.</p>
+          <p className="text-[10px] text-surface-600 mt-3 font-mono">Press 1 to go to Dashboard</p>
         </div>
       </div>
     )
