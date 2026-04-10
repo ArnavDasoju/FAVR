@@ -1,0 +1,155 @@
+{
+  "services": [
+    {
+      "id": "web-app",
+      "name": "Web Application",
+      "techStack": ["React 18", "Node.js 20", "Express 4.18"],
+      "tier": "critical",
+      "sla": 99.9,
+      "description": "Customer-facing web application",
+      "complianceFrameworks": ["PCI-DSS", "GDPR"],
+      "maintenanceWindow": {
+        "day": "Saturday",
+        "startTime": "02:00",
+        "endTime": "06:00",
+        "timezone": "EST",
+        "durationMinutes": 240
+      }
+    },
+    {
+      "id": "api-server",
+      "name": "API Server",
+      "techStack": ["Node.js 20", "Fastify 4", "PostgreSQL 16"],
+      "tier": "critical",
+      "sla": 99.95,
+      "description": "REST API backend",
+      "complianceFrameworks": ["PCI-DSS", "SOC2"],
+      "maintenanceWindow": {
+        "day": "Sunday",
+        "startTime": "01:00",
+        "endTime": "05:00",
+        "timezone": "EST",
+        "durationMinutes": 240
+      }
+    },
+    {
+      "id": "auth-service",
+      "name": "Auth Service",
+      "techStack": ["Go 1.22", "Redis 7"],
+      "tier": "high",
+      "sla": 99.9,
+      "description": "Authentication and session management",
+      "complianceFrameworks": ["SOC2"],
+      "maintenanceWindow": {
+        "day": "Saturday",
+        "startTime": "03:00",
+        "endTime": "07:00",
+        "timezone": "EST",
+        "durationMinutes": 240
+      }
+    },
+    {
+      "id": "worker",
+      "name": "Background Worker",
+      "techStack": ["Python 3.12", "Celery 5"],
+      "tier": "medium",
+      "sla": 99.0,
+      "description": "Async job processing",
+      "complianceFrameworks": [],
+      "maintenanceWindow": null
+    }
+  ],
+  "dependencies": [
+    { "from": "web-app", "to": "api-server", "type": "api", "propagationWeight": 0.8, "description": "Frontend calls API" },
+    { "from": "web-app", "to": "auth-service", "type": "auth", "propagationWeight": 0.9, "description": "Login/session" },
+    { "from": "api-server", "to": "auth-service", "type": "auth", "propagationWeight": 0.7, "description": "Token validation" },
+    { "from": "api-server", "to": "worker", "type": "api", "propagationWeight": 0.3, "description": "Enqueues jobs" }
+  ],
+  "vulnerabilities": [
+    {
+      "id": "vuln-1",
+      "cveId": "CVE-2024-21626",
+      "title": "runc container breakout",
+      "description": "Leaking /proc/self/fd allows container escape via runc",
+      "severity": "critical",
+      "cvssScore": 8.6,
+      "affectedServiceIds": ["api-server", "worker"],
+      "affectedPackage": "runc@1.1.10",
+      "patchedVersion": "runc@1.1.12",
+      "remediationCost": 4,
+      "remediationDowntime": 30,
+      "complexity": "high",
+      "knownExploit": true,
+      "complianceViolations": ["PCI-DSS", "SOC2"],
+      "complianceDeadlineDays": 14
+    },
+    {
+      "id": "vuln-2",
+      "cveId": "CVE-2023-44487",
+      "title": "HTTP/2 Rapid Reset DDoS",
+      "description": "HTTP/2 protocol allows rapid stream reset causing server resource exhaustion",
+      "severity": "high",
+      "cvssScore": 7.5,
+      "affectedServiceIds": ["web-app", "api-server"],
+      "affectedPackage": "golang.org/x/net@0.16.0",
+      "patchedVersion": "golang.org/x/net@0.17.0",
+      "remediationCost": 2,
+      "remediationDowntime": 15,
+      "complexity": "medium",
+      "knownExploit": true,
+      "complianceViolations": ["PCI-DSS"],
+      "complianceDeadlineDays": 30
+    },
+    {
+      "id": "vuln-3",
+      "cveId": "CVE-2024-3094",
+      "title": "XZ Utils backdoor",
+      "description": "Malicious code in xz/liblzma allows unauthorized SSH access",
+      "severity": "critical",
+      "cvssScore": 10.0,
+      "affectedServiceIds": ["auth-service"],
+      "affectedPackage": "xz-utils@5.6.0",
+      "patchedVersion": "xz-utils@5.6.1",
+      "remediationCost": 3,
+      "remediationDowntime": 20,
+      "complexity": "medium",
+      "knownExploit": true,
+      "complianceViolations": ["SOC2", "PCI-DSS"],
+      "complianceDeadlineDays": 7
+    },
+    {
+      "id": "vuln-4",
+      "cveId": "CVE-2024-24790",
+      "title": "Go net/netip IPv6 zone parsing",
+      "description": "Incorrect behavior with IPv6 zone IDs can cause unexpected host matching",
+      "severity": "high",
+      "cvssScore": 7.3,
+      "affectedServiceIds": ["auth-service"],
+      "affectedPackage": "go@1.21.0",
+      "patchedVersion": "go@1.21.11",
+      "remediationCost": 2,
+      "remediationDowntime": 10,
+      "complexity": "low",
+      "knownExploit": false,
+      "complianceViolations": [],
+      "complianceDeadlineDays": null
+    },
+    {
+      "id": "vuln-5",
+      "cveId": "CVE-2023-45853",
+      "title": "zlib MiniZip integer overflow",
+      "description": "Integer overflow in MiniZip allows heap-based buffer overflow",
+      "severity": "medium",
+      "cvssScore": 5.3,
+      "affectedServiceIds": ["worker"],
+      "affectedPackage": "zlib@1.3",
+      "patchedVersion": "zlib@1.3.1",
+      "remediationCost": 1,
+      "remediationDowntime": 5,
+      "complexity": "low",
+      "knownExploit": false,
+      "complianceViolations": [],
+      "complianceDeadlineDays": null
+    }
+  ]
+}

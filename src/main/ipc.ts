@@ -91,14 +91,13 @@ export function setupIpc(): void {
         emit('analysis:progress', { phase: 'ingest', progress: 100, message: `Parsed ${parsed.rawDocuments.length} documents` })
       }
 
-      // If no services/vulns parsed, fall back to demo data
+      // If no services/vulns parsed, tell the user to upload files or use demo
       if (parsedInput.vulnerabilities.length === 0) {
-        const scenario = loadMeridianScenario()
-        parsedInput = {
-          services: scenario.services,
-          dependencies: scenario.dependencies,
-          vulnerabilities: scenario.vulnerabilities
-        }
+        throw new Error(
+          'No vulnerabilities found in uploaded documents. ' +
+          'Please upload JSON CVE feeds, vendor advisories, or service configs. ' +
+          'Or click "Load Demo Scenario" to try with sample data.'
+        )
       }
 
       // If codebase path provided, scan it
