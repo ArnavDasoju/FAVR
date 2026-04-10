@@ -80,7 +80,7 @@ export default function FlowsView() {
           <button
             key={sev}
             onClick={() => setFilter(sev)}
-            className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-btn border transition-colors ${
+            className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-btn border transition-all duration-150 btn-hover ${
               filter === sev
                 ? sev === 'all'
                   ? 'bg-surface-800 border-white/20 text-white'
@@ -95,7 +95,7 @@ export default function FlowsView() {
 
       {/* Vulnerability list */}
       <div className="flex flex-col gap-3">
-        {sorted.map(vuln => {
+        {sorted.map((vuln, idx) => {
           const position = positionMap.get(vuln.id) ?? null
           const ci = position ? confidenceIntervals[position - 1] : null
           const isExpanded = expandedId === vuln.id
@@ -107,7 +107,8 @@ export default function FlowsView() {
           return (
             <div
               key={vuln.id}
-              className="bg-surface-900 border border-surface-800 rounded-card overflow-hidden"
+              className="bg-surface-900 border border-surface-800 rounded-card overflow-hidden card-hover animate-slideUp"
+              style={{ animationDelay: `${Math.min(idx * 50, 400)}ms` }}
             >
               {/* Header row */}
               <button
@@ -157,7 +158,7 @@ export default function FlowsView() {
 
               {/* Expanded details */}
               {isExpanded && (
-                <div className="border-t border-surface-800/50 px-5 py-4">
+                <div className="border-t border-surface-800/50 px-5 py-4 animate-fadeIn">
                   <div className="grid grid-cols-2 gap-6">
                     {/* Left: Details */}
                     <div>

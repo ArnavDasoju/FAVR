@@ -49,12 +49,15 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-btn text-left transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-btn text-left transition-all duration-200 relative ${
               activeView === item.id
                 ? 'bg-surface-800 text-white'
-                : 'text-surface-400 hover:text-white hover:bg-surface-900'
+                : 'text-surface-400 hover:text-white hover:bg-surface-900 hover:translate-x-0.5'
             }`}
           >
+            {activeView === item.id && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-white rounded-r-full animate-scaleIn" />
+            )}
             <span className="text-sm font-semibold">{item.label}</span>
             <span className="text-[10px] font-mono text-surface-600">
               {item.id === 'vulnerabilities' && vulnCount > 0 ? vulnCount : ''}
@@ -66,8 +69,8 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
 
       {/* Risk summary */}
       {result && (
-        <div className="px-4 pb-5">
-          <div className="bg-surface-900 border border-surface-800 rounded-card p-3 flex flex-col gap-2">
+        <div className="px-4 pb-5 animate-slideUp">
+          <div className="bg-surface-900 border border-surface-800 rounded-card p-3 flex flex-col gap-2 card-hover">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-surface-500 uppercase tracking-wider">
                 System Risk

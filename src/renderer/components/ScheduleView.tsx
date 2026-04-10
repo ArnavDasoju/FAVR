@@ -78,7 +78,7 @@ export default function ScheduleView() {
           const weekTotalDowntime = patches.reduce((s, p) => s + p.estimatedDuration, 0)
 
           return (
-            <div key={weekNum} className="bg-surface-900 border border-surface-800 rounded-card overflow-hidden">
+            <div key={weekNum} className="bg-surface-900 border border-surface-800 rounded-card overflow-hidden animate-slideUp" style={{ animationDelay: `${Math.min(weekNum * 80, 500)}ms` }}>
               {/* Week header */}
               <div className="px-5 py-3 border-b border-surface-800/50 flex items-center justify-between">
                 <div className="flex items-center gap-3">

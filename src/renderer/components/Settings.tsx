@@ -256,7 +256,7 @@ export default function Settings() {
         <div className="flex justify-end pb-8">
           <button
             onClick={handleSave}
-            className={`px-8 py-3 text-sm font-bold rounded-btn uppercase tracking-wide transition-all ${
+            className={`px-8 py-3 text-sm font-bold rounded-btn uppercase tracking-wide transition-all btn-hover ${
               saved
                 ? 'bg-surface-800 text-surface-400'
                 : 'bg-white text-black hover:bg-surface-200'

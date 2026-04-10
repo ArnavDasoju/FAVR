@@ -87,8 +87,8 @@ export default function Dashboard() {
     return (
       <div className="h-full overflow-y-auto p-6">
         <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-black text-white mb-2">FAVR</h1>
-          <p className="text-surface-400 text-sm mb-8">
+          <h1 className="text-3xl font-black text-white mb-2 animate-fadeIn">FAVR</h1>
+          <p className="text-surface-400 text-sm mb-8 animate-slideUp stagger-1">
             Vulnerability prioritization powered by Attack Graph analysis,
             Bayesian risk propagation, Monte Carlo simulation, and Pareto optimization.
           </p>
@@ -97,25 +97,25 @@ export default function Dashboard() {
           <div className="flex gap-3 mb-6">
             <button
               onClick={() => setMode('analysis')}
-              className={`flex-1 p-4 rounded-card border text-left transition-colors ${
+              className={`flex-1 p-4 rounded-card border text-left transition-all duration-200 card-hover animate-slideUp stagger-1 ${
                 mode === 'analysis'
                   ? 'bg-surface-800 border-white/20 text-white'
                   : 'bg-surface-900 border-surface-800 text-surface-400 hover:border-surface-700'
               }`}
             >
               <div className="text-sm font-bold mb-1">Scan Codebase</div>
-              <div className="text-[10px] text-surface-500">Point at a project → Auto-discover vulns</div>
+              <div className="text-[10px] text-surface-500">Point at a project &rarr; Auto-discover vulns</div>
             </button>
             <button
               onClick={() => setMode('remediation')}
-              className={`flex-1 p-4 rounded-card border text-left transition-colors ${
+              className={`flex-1 p-4 rounded-card border text-left transition-all duration-200 card-hover animate-slideUp stagger-2 ${
                 mode === 'remediation'
                   ? 'bg-surface-800 border-white/20 text-white'
                   : 'bg-surface-900 border-surface-800 text-surface-400 hover:border-surface-700'
               }`}
             >
               <div className="text-sm font-bold mb-1">Upload Documents</div>
-              <div className="text-[10px] text-surface-500">CVE feeds, advisories → Prioritize → Report</div>
+              <div className="text-[10px] text-surface-500">CVE feeds, advisories &rarr; Prioritize &rarr; Report</div>
             </button>
           </div>
 
@@ -186,20 +186,20 @@ export default function Dashboard() {
           )}
 
           {/* Actions */}
-          <div className="flex gap-3">
+          <div className="flex gap-3 animate-slideUp stagger-4">
             {mode === 'analysis' ? (
               <>
                 <button
                   onClick={handleLoadDemo}
                   disabled={loading}
-                  className="bg-surface-800 border border-surface-700 text-surface-300 font-bold text-sm py-3 px-6 rounded-btn hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                  className="bg-surface-800 border border-surface-700 text-surface-300 font-bold text-sm py-3 px-6 rounded-btn hover:bg-surface-700 disabled:opacity-50 transition-all btn-hover"
                 >
                   Demo
                 </button>
                 <button
                   onClick={handleScanCodebase}
                   disabled={loading || !codebasePath}
-                  className="flex-1 bg-white text-black font-bold text-sm py-3 rounded-btn hover:bg-surface-200 disabled:opacity-50 transition-colors"
+                  className="flex-1 bg-white text-black font-bold text-sm py-3 rounded-btn hover:bg-surface-200 disabled:opacity-50 transition-all btn-hover"
                 >
                   Scan Codebase
                 </button>
@@ -209,14 +209,14 @@ export default function Dashboard() {
                 <button
                   onClick={handleLoadDemo}
                   disabled={loading}
-                  className="bg-surface-800 border border-surface-700 text-surface-300 font-bold text-sm py-3 px-6 rounded-btn hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                  className="bg-surface-800 border border-surface-700 text-surface-300 font-bold text-sm py-3 px-6 rounded-btn hover:bg-surface-700 disabled:opacity-50 transition-all btn-hover"
                 >
                   Demo
                 </button>
                 <button
                   onClick={handleRunAnalysis}
                   disabled={loading}
-                  className="flex-1 bg-white text-black font-bold text-sm py-3 rounded-btn hover:bg-surface-200 disabled:opacity-50 transition-colors"
+                  className="flex-1 bg-white text-black font-bold text-sm py-3 rounded-btn hover:bg-surface-200 disabled:opacity-50 transition-all btn-hover"
                 >
                   Run Analysis
                 </button>
@@ -238,20 +238,20 @@ export default function Dashboard() {
   if (isRunning) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="max-w-md w-full p-8">
+        <div className="max-w-md w-full p-8 animate-scaleIn">
           <h2 className="text-lg font-bold text-white mb-4">Analyzing...</h2>
-          <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-surface-400 uppercase">{phase}</span>
-              <span className="text-xs font-mono text-surface-500">{progress}%</span>
+          <div className="bg-surface-900 border border-surface-800 rounded-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-surface-400 uppercase tracking-wider">{phase}</span>
+              <span className="text-xs font-mono text-white">{progress}%</span>
             </div>
-            <div className="w-full h-2 bg-surface-800 rounded-full overflow-hidden mb-2">
+            <div className="w-full h-2.5 bg-surface-800 rounded-full overflow-hidden mb-3">
               <div
-                className="h-full bg-white rounded-full transition-all duration-300"
+                className="h-full bg-white rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <p className="text-[11px] text-surface-500">{message}</p>
+            <p className="text-[11px] text-surface-500 animate-fadeIn" key={message}>{message}</p>
           </div>
         </div>
       </div>
@@ -279,27 +279,27 @@ export default function Dashboard() {
     <div className="h-full overflow-y-auto p-6">
       {/* Hero Stats */}
       <div className="grid grid-cols-6 gap-3 mb-6">
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
-          <div className="text-3xl font-black text-red-400">{totalRisk}%</div>
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-1">
+          <div className="text-3xl font-black text-red-400 animate-numberGlow">{totalRisk}%</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">System Risk</div>
         </div>
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-2">
           <div className="text-3xl font-black text-green-400">-{reduction}%</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">After Remediation</div>
         </div>
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-3">
           <div className="text-3xl font-black text-white">{vulnCount}</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Vulnerabilities</div>
         </div>
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
-          <div className="text-3xl font-black text-red-400">{critCount}</div>
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-4">
+          <div className={`text-3xl font-black text-red-400 ${critCount > 0 ? 'animate-numberGlow' : ''}`}>{critCount}</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Critical</div>
         </div>
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
-          <div className={`text-3xl font-black ${complianceRisk > 50 ? 'text-purple-400' : 'text-surface-400'}`}>{complianceRisk}%</div>
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-5">
+          <div className={`text-3xl font-black ${complianceRisk > 50 ? 'text-purple-400 animate-numberGlow' : 'text-surface-400'}`}>{complianceRisk}%</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Compliance Risk</div>
         </div>
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-6">
           <div className="text-3xl font-black text-blue-400">{maxScheduleWeek}wk</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Schedule</div>
         </div>
@@ -307,7 +307,7 @@ export default function Dashboard() {
 
       {/* Compliance Alerts */}
       {urgentCompliance > 0 && (
-        <div className="bg-purple-500/10 border border-purple-500/30 rounded-card p-4 mb-6 flex items-center justify-between">
+        <div className="bg-purple-500/10 border border-purple-500/30 rounded-card p-4 mb-6 flex items-center justify-between animate-slideUp stagger-7 animate-pulseGlow">
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-purple-400 status-blink" />
             <div>
@@ -319,7 +319,7 @@ export default function Dashboard() {
           </div>
           <button
             onClick={handleExport}
-            className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold rounded-btn hover:bg-purple-500/30 transition-colors"
+            className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold rounded-btn hover:bg-purple-500/30 transition-colors btn-hover"
           >
             Export Report
           </button>
@@ -328,12 +328,12 @@ export default function Dashboard() {
 
       {/* Charts Grid */}
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <DependencyGraph />
-        <ServiceHeatmap />
+        <div className="animate-slideUp stagger-7"><DependencyGraph /></div>
+        <div className="animate-slideUp stagger-8"><ServiceHeatmap /></div>
       </div>
 
       {/* Top 5 Priority Patches */}
-      <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-6">
+      <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-6 animate-fadeIn" style={{ animationDelay: '400ms' }}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-white">Top Priority Patches (FAVR Optimized)</h3>
           <button
@@ -354,7 +354,7 @@ export default function Dashboard() {
             const epssHigher = vuln.epssScore > vuln.cvssScore / 10
 
             return (
-              <div key={vulnId} className="flex items-center gap-3 bg-surface-800/50 rounded-btn p-3">
+              <div key={vulnId} className="flex items-center gap-3 bg-surface-800/50 rounded-btn p-3 transition-all duration-150 hover:bg-surface-800 hover:translate-x-0.5">
                 <div className="w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-xs font-black text-white">
                   {i + 1}
                 </div>
@@ -402,9 +402,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 animate-fadeIn" style={{ animationDelay: '500ms' }}>
         <SeverityDonut />
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 card-hover">
           <h3 className="text-sm font-bold text-white mb-1">Engine Stats</h3>
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>

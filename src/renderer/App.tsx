@@ -74,7 +74,9 @@ export default function App() {
         <div className="titlebar-drag h-12 shrink-0" />
         <div className="flex-1 overflow-hidden">
           <ViewErrorBoundary key={activeView}>
-            {renderView()}
+            <div key={activeView} className="h-full view-enter">
+              {renderView()}
+            </div>
           </ViewErrorBoundary>
         </div>
       </div>
