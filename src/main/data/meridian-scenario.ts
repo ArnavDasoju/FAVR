@@ -21,7 +21,9 @@ export const MERIDIAN_SERVICES: Service[] = [
     sla: 99.99,
     description: 'Core transaction processing. Handles ~50K transactions/day. Zero downtime tolerance.',
     baseCompromiseProbability: 0,
-    currentRiskScore: 0
+    currentRiskScore: 0,
+    complianceFrameworks: ['PCI-DSS', 'SOX'],
+    maintenanceWindow: { day: 'Saturday', startTime: '02:00', endTime: '06:00', timezone: 'EST', durationMinutes: 240 }
   },
   {
     id: 'customer-portal',
@@ -31,7 +33,9 @@ export const MERIDIAN_SERVICES: Service[] = [
     sla: 99.9,
     description: 'Client-facing dashboard. 8K daily active users. Account management and reporting.',
     baseCompromiseProbability: 0,
-    currentRiskScore: 0
+    currentRiskScore: 0,
+    complianceFrameworks: ['GDPR', 'SOC2'],
+    maintenanceWindow: { day: 'Sunday', startTime: '00:00', endTime: '06:00', timezone: 'EST', durationMinutes: 360 }
   },
   {
     id: 'internal-dashboard',
@@ -41,7 +45,9 @@ export const MERIDIAN_SERVICES: Service[] = [
     sla: 99.5,
     description: 'Employee analytics and monitoring. Used by ~100 internal staff.',
     baseCompromiseProbability: 0,
-    currentRiskScore: 0
+    currentRiskScore: 0,
+    complianceFrameworks: ['SOC2'],
+    maintenanceWindow: { day: 'Wednesday', startTime: '22:00', endTime: '02:00', timezone: 'EST', durationMinutes: 240 }
   },
   {
     id: 'auth-service',
@@ -51,7 +57,9 @@ export const MERIDIAN_SERVICES: Service[] = [
     sla: 99.99,
     description: 'Centralized authentication. Every service depends on it. JWT issuance and validation.',
     baseCompromiseProbability: 0,
-    currentRiskScore: 0
+    currentRiskScore: 0,
+    complianceFrameworks: ['PCI-DSS', 'SOX', 'HIPAA'],
+    maintenanceWindow: { day: 'Saturday', startTime: '02:00', endTime: '06:00', timezone: 'EST', durationMinutes: 240 }
   },
   {
     id: 'database-layer',
@@ -61,7 +69,9 @@ export const MERIDIAN_SERVICES: Service[] = [
     sla: 99.99,
     description: 'Central data store. Payment API and Auth Service have direct dependencies.',
     baseCompromiseProbability: 0,
-    currentRiskScore: 0
+    currentRiskScore: 0,
+    complianceFrameworks: ['PCI-DSS', 'SOX', 'HIPAA', 'GDPR'],
+    maintenanceWindow: { day: 'Saturday', startTime: '02:00', endTime: '06:00', timezone: 'EST', durationMinutes: 240 }
   }
 ]
 
@@ -131,6 +141,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'A vulnerability in Node.js allows an attacker to perform path traversal by using a Buffer as a URL path. This can lead to reading arbitrary files on the system.',
     severity: 'critical',
     cvssScore: 9.8,
+    epssScore: 0.87,
     exploitProbability: 0.75,
     affectedServiceIds: ['payment-api'],
     affectedPackage: 'node@18.17.0',
@@ -144,7 +155,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'compliance', description: 'PCI-DSS requires immediate patching of critical RCE vulnerabilities' },
       { type: 'maintenance-window', description: 'Payment API requires Saturday 2AM-6AM maintenance window' }
     ],
-    knownExploit: true
+    knownExploit: true,
+    complianceViolations: ['PCI-DSS', 'SOX'],
+    complianceDeadlineDays: 7
   },
   {
     id: 'vuln-002',
@@ -153,6 +166,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Express versions before 4.19.2 are vulnerable to open redirect attacks. An attacker could craft a URL that redirects users to malicious sites.',
     severity: 'critical',
     cvssScore: 9.1,
+    epssScore: 0.42,
     exploitProbability: 0.7,
     affectedServiceIds: ['payment-api'],
     affectedPackage: 'express@4.18.2',
@@ -166,7 +180,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'dependency', description: 'Express upgrade may break middleware used by Customer Portal API proxy', blockedBy: [] },
       { type: 'compliance', description: 'PCI-DSS critical patch' }
     ],
-    knownExploit: true
+    knownExploit: true,
+    complianceViolations: ['PCI-DSS'],
+    complianceDeadlineDays: 14
   },
   {
     id: 'vuln-003',
@@ -175,6 +191,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'The HTTP/2 protocol allows rapid stream creation and cancellation, enabling denial of service. Affects all Go HTTP/2 servers.',
     severity: 'critical',
     cvssScore: 7.5,
+    epssScore: 0.94,
     exploitProbability: 0.8,
     affectedServiceIds: ['auth-service'],
     affectedPackage: 'golang.org/x/net@0.15.0',
@@ -187,7 +204,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     constraints: [
       { type: 'compliance', description: 'Auth Service downtime requires coordinated restart of all dependent services' }
     ],
-    knownExploit: true
+    knownExploit: true,
+    complianceViolations: ['PCI-DSS', 'HIPAA'],
+    complianceDeadlineDays: 7
   },
   {
     id: 'vuln-004',
@@ -196,6 +215,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'A container escape vulnerability in runc allows attackers to break out of containers and access the host filesystem. Affects all containerized services.',
     severity: 'critical',
     cvssScore: 8.6,
+    epssScore: 0.72,
     exploitProbability: 0.5,
     affectedServiceIds: ['payment-api', 'auth-service', 'database-layer'],
     affectedPackage: 'runc@1.1.9',
@@ -209,7 +229,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'maintenance-window', description: 'Requires coordinated restart of all container hosts' },
       { type: 'team-capacity', description: 'DevOps team of 3 needed for container infrastructure changes' }
     ],
-    knownExploit: true
+    knownExploit: true,
+    complianceViolations: ['PCI-DSS', 'SOX', 'HIPAA'],
+    complianceDeadlineDays: 14
   },
 
   // ── HIGH ────────────────────────────────────────────────────
@@ -221,6 +243,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Mishandling of IPv4-mapped IPv6 addresses in Go can cause incorrect behavior in network operations, potentially bypassing access controls.',
     severity: 'high',
     cvssScore: 7.3,
+    epssScore: 0.08,
     exploitProbability: 0.45,
     affectedServiceIds: ['auth-service'],
     affectedPackage: 'go@1.21.0',
@@ -231,7 +254,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: [],
+    complianceDeadlineDays: null
   },
   {
     id: 'vuln-006',
@@ -240,6 +265,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Axios versions before 1.7.4 are vulnerable to SSRF when the base URL points to a domain controlled by the attacker.',
     severity: 'high',
     cvssScore: 7.5,
+    epssScore: 0.68,
     exploitProbability: 0.55,
     affectedServiceIds: ['customer-portal'],
     affectedPackage: 'axios@1.5.0',
@@ -250,7 +276,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: true
+    knownExploit: true,
+    complianceViolations: ['GDPR'],
+    complianceDeadlineDays: 30
   },
   {
     id: 'vuln-007',
@@ -259,6 +287,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Next.js before 14.1.1 is vulnerable to SSRF via Server Actions. Attackers can make the server send requests to internal services.',
     severity: 'high',
     cvssScore: 7.5,
+    epssScore: 0.31,
     exploitProbability: 0.6,
     affectedServiceIds: ['customer-portal'],
     affectedPackage: 'next@14.0.3',
@@ -271,7 +300,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     constraints: [
       { type: 'dependency', description: 'Next.js upgrade requires testing all server-side rendered pages' }
     ],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: ['SOC2'],
+    complianceDeadlineDays: 30
   },
   {
     id: 'vuln-008',
@@ -280,6 +311,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'nginx before 1.25.3 is vulnerable to HTTP request smuggling when used as a reverse proxy with certain backend configurations.',
     severity: 'high',
     cvssScore: 7.0,
+    epssScore: 0.12,
     exploitProbability: 0.4,
     affectedServiceIds: ['customer-portal'],
     affectedPackage: 'nginx@1.24.0',
@@ -292,7 +324,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     constraints: [
       { type: 'dependency', description: 'nginx config changes require validation of reverse proxy rules' }
     ],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: [],
+    complianceDeadlineDays: null
   },
 
   // ── MEDIUM ──────────────────────────────────────────────────
@@ -304,6 +338,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Werkzeug (used by Flask) debugger can be exploited if exposed in production. Allows remote code execution through crafted requests.',
     severity: 'medium',
     cvssScore: 6.5,
+    epssScore: 0.73,
     exploitProbability: 0.35,
     affectedServiceIds: ['internal-dashboard'],
     affectedPackage: 'werkzeug@2.3.6',
@@ -314,7 +349,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: ['SOC2'],
+    complianceDeadlineDays: 60
   },
   {
     id: 'vuln-010',
@@ -323,6 +360,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Jinja2 before 3.1.3 allows template injection in certain edge cases where user input is rendered without proper sandboxing.',
     severity: 'medium',
     cvssScore: 6.1,
+    epssScore: 0.05,
     exploitProbability: 0.3,
     affectedServiceIds: ['internal-dashboard'],
     affectedPackage: 'jinja2@3.1.2',
@@ -333,7 +371,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: [],
+    complianceDeadlineDays: null
   },
   {
     id: 'vuln-011',
@@ -342,6 +382,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Redis before 7.0.12 allows remote attackers to cause a denial of service by sending specially crafted AUTH commands.',
     severity: 'medium',
     cvssScore: 5.5,
+    epssScore: 0.22,
     exploitProbability: 0.3,
     affectedServiceIds: ['internal-dashboard'],
     affectedPackage: 'redis@7.0.11',
@@ -352,7 +393,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: [],
+    complianceDeadlineDays: null
   },
   {
     id: 'vuln-012',
@@ -361,6 +404,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'PostgreSQL allows non-owner users to execute arbitrary SQL during REFRESH MATERIALIZED VIEW, leading to privilege escalation.',
     severity: 'medium',
     cvssScore: 6.8,
+    epssScore: 0.04,
     exploitProbability: 0.25,
     affectedServiceIds: ['database-layer'],
     affectedPackage: 'postgresql@15.3',
@@ -374,7 +418,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'maintenance-window', description: 'Database upgrade requires Saturday maintenance window' },
       { type: 'compliance', description: 'PCI-DSS requires tested backup before database upgrades' }
     ],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: ['PCI-DSS', 'HIPAA'],
+    complianceDeadlineDays: 30
   },
 
   // ── LOW ─────────────────────────────────────────────────────
@@ -386,6 +432,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'pgBouncer before 1.21 allows STARTTLS stripping, potentially exposing database traffic to eavesdropping on untrusted networks.',
     severity: 'low',
     cvssScore: 3.7,
+    epssScore: 0.02,
     exploitProbability: 0.15,
     affectedServiceIds: ['database-layer'],
     affectedPackage: 'pgbouncer@1.20.0',
@@ -396,7 +443,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: ['GDPR'],
+    complianceDeadlineDays: 90
   },
   {
     id: 'vuln-014',
@@ -405,6 +454,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'Vault before 1.15.4 allows certain requests to bypass audit logging, potentially hiding attacker activity.',
     severity: 'low',
     cvssScore: 4.0,
+    epssScore: 0.03,
     exploitProbability: 0.1,
     affectedServiceIds: ['auth-service'],
     affectedPackage: 'vault@1.14.0',
@@ -415,7 +465,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: ['HIPAA', 'SOX'],
+    complianceDeadlineDays: 60
   },
   {
     id: 'vuln-015',
@@ -424,6 +476,7 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     description: 'jsonwebtoken before 9.0.2 is vulnerable to timing attacks during token verification, potentially allowing token forgery.',
     severity: 'low',
     cvssScore: 3.1,
+    epssScore: 0.01,
     exploitProbability: 0.1,
     affectedServiceIds: ['payment-api', 'auth-service'],
     affectedPackage: 'jsonwebtoken@9.0.0',
@@ -434,7 +487,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     status: 'open',
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: ['PCI-DSS'],
+    complianceDeadlineDays: 90
   }
 ]
 

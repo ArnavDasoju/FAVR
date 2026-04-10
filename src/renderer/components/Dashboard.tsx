@@ -192,11 +192,22 @@ export default function Dashboard() {
   const reduction = Math.round(result!.simulation.riskReduction)
   const vulnCount = result!.graph.vulnerabilities.length
   const critCount = result!.graph.vulnerabilities.filter(v => v.severity === 'critical').length
+  const complianceRisk = result!.complianceSummary ? Math.round(result!.complianceSummary.overallComplianceRisk * 100) : 0
+  const urgentCompliance = result!.complianceSummary?.violations.reduce((s, v) => s + v.urgentCount, 0) ?? 0
+  const maxScheduleWeek = result!.schedule?.length > 0 ? Math.max(...result!.schedule.map(s => s.weekNumber)) : 0
+
+  async function handleExport() {
+    try {
+      await window.api.invoke('analysis:exportReport')
+    } catch (err) {
+      console.error('Export failed:', err)
+    }
+  }
 
   return (
     <div className="h-full overflow-y-auto p-6">
       {/* Hero Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-6 gap-3 mb-6">
         <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
           <div className="text-3xl font-black text-red-400">{totalRisk}%</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">System Risk</div>
@@ -213,7 +224,36 @@ export default function Dashboard() {
           <div className="text-3xl font-black text-red-400">{critCount}</div>
           <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Critical</div>
         </div>
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+          <div className={`text-3xl font-black ${complianceRisk > 50 ? 'text-purple-400' : 'text-surface-400'}`}>{complianceRisk}%</div>
+          <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Compliance Risk</div>
+        </div>
+        <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+          <div className="text-3xl font-black text-blue-400">{maxScheduleWeek}wk</div>
+          <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Schedule</div>
+        </div>
       </div>
+
+      {/* Compliance Alerts */}
+      {urgentCompliance > 0 && (
+        <div className="bg-purple-500/10 border border-purple-500/30 rounded-card p-4 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-3 h-3 rounded-full bg-purple-400 status-blink" />
+            <div>
+              <div className="text-sm font-bold text-purple-300">{urgentCompliance} Compliance Deadline{urgentCompliance !== 1 ? 's' : ''} Within 14 Days</div>
+              <div className="text-[10px] text-purple-400/70 mt-0.5">
+                {result!.complianceSummary?.violations.filter(v => v.urgentCount > 0).map(v => v.framework).join(', ')}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleExport}
+            className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold rounded-btn hover:bg-purple-500/30 transition-colors"
+          >
+            Export Report
+          </button>
+        </div>
+      )}
 
       {/* Charts Grid */}
       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -223,13 +263,24 @@ export default function Dashboard() {
 
       {/* Top 5 Priority Patches */}
       <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-6">
-        <h3 className="text-sm font-bold text-white mb-3">Top Priority Patches (FAVR Optimized)</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-white">Top Priority Patches (FAVR Optimized)</h3>
+          <button
+            onClick={handleExport}
+            className="text-[10px] font-bold text-surface-400 hover:text-white transition-colors uppercase tracking-wider"
+          >
+            Export Full Report
+          </button>
+        </div>
         <div className="grid gap-2">
           {result!.simulation.optimalOrder.slice(0, 5).map((vulnId, i) => {
             const vuln = result!.graph.vulnerabilities.find(v => v.id === vulnId)
             if (!vuln) return null
             const ci = result!.simulation.confidenceIntervals[i]
             const sevStyle = SEVERITY_COLORS[vuln.severity]
+            const blast = result!.blastRadii?.[vulnId]
+            const epssDiv = Math.abs(vuln.epssScore - vuln.cvssScore / 10)
+            const epssHigher = vuln.epssScore > vuln.cvssScore / 10
 
             return (
               <div key={vulnId} className="flex items-center gap-3 bg-surface-800/50 rounded-btn p-3">
@@ -240,9 +291,36 @@ export default function Dashboard() {
                   {vuln.severity}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white truncate">{vuln.cveId}</div>
-                  <div className="text-[10px] text-surface-500 truncate">{vuln.title}</div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-xs font-bold text-white truncate">{vuln.cveId}</span>
+                    <span className="text-[10px] text-surface-500 font-mono">CVSS {vuln.cvssScore.toFixed(1)}</span>
+                    {epssDiv > 0.15 && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${epssHigher ? 'bg-red-500/15 text-red-400' : 'bg-green-500/15 text-green-400'}`}>
+                        EPSS {(vuln.epssScore * 100).toFixed(0)}%{epssHigher ? ' !' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-surface-500 truncate">{vuln.title}</span>
+                  </div>
                 </div>
+                {/* Compliance badges */}
+                {vuln.complianceViolations && vuln.complianceViolations.length > 0 && (
+                  <div className="flex gap-1 shrink-0">
+                    {vuln.complianceViolations.slice(0, 2).map(f => (
+                      <span key={f} className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* Blast radius */}
+                {blast && blast.cascadeServices.length > 0 && (
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-bold text-amber-400">{blast.cascadeServices.length + blast.directServices.length}</div>
+                    <div className="text-[10px] text-surface-600">blast</div>
+                  </div>
+                )}
                 <div className="text-right shrink-0">
                   <div className="text-xs font-bold text-surface-300">{Math.round(ci.frequency * 100)}%</div>
                   <div className="text-[10px] text-surface-600">confidence</div>
@@ -271,8 +349,8 @@ export default function Dashboard() {
               <div className="text-[10px] text-surface-500">Pareto Solutions</div>
             </div>
             <div>
-              <div className="text-lg font-black text-white">{result!.graph.services.length}</div>
-              <div className="text-[10px] text-surface-500">Services</div>
+              <div className="text-lg font-black text-white">{result!.complianceSummary?.frameworks.length ?? 0}</div>
+              <div className="text-[10px] text-surface-500">Frameworks</div>
             </div>
           </div>
         </div>

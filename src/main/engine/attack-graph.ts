@@ -55,7 +55,8 @@ export function buildAttackGraph(
   }
 
   // Compute initial risk scores (before Bayesian propagation)
-  // P(service compromised) = 1 - product(1 - P(vuln_i exploited)) for directly attached vulns
+  // Uses EPSS-weighted exploit probability for more accurate real-world risk.
+  // effectiveExploitProb = blend of exploitProbability and epssScore
   for (const service of services) {
     const attachedVulns = vulnerabilities.filter(v =>
       v.affectedServiceIds.includes(service.id) && v.status === 'open'
@@ -65,9 +66,14 @@ export function buildAttackGraph(
       service.baseCompromiseProbability = 0
       service.currentRiskScore = 0
     } else {
-      // Independent exploit probability: P = 1 - prod(1 - p_i)
+      // Blend EPSS with base exploit probability (EPSS is real-world data, weight it higher)
+      // effectiveProb = 0.6 * epss + 0.4 * exploitProbability
       const survivalProduct = attachedVulns.reduce(
-        (acc, v) => acc * (1 - v.exploitProbability),
+        (acc, v) => {
+          const epss = v.epssScore ?? v.exploitProbability
+          const effective = 0.6 * epss + 0.4 * v.exploitProbability
+          return acc * (1 - effective)
+        },
         1
       )
       service.baseCompromiseProbability = 1 - survivalProduct

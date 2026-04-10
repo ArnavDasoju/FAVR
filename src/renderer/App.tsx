@@ -1,11 +1,12 @@
 import { useState, Component, type ReactNode } from 'react'
 import Sidebar, { type View } from './components/Sidebar'
 import Dashboard from './components/Dashboard'
-import AgentRoster from './components/AgentRoster'
 import FlowsView from './components/FlowsView'
 import BudgetView from './components/BudgetView'
 import Settings from './components/Settings'
 import Stats from './components/Stats'
+import ScheduleView from './components/ScheduleView'
+import WhatIfView from './components/WhatIfView'
 import { useIpcListeners } from './hooks/useIpc'
 
 declare global {
@@ -51,14 +52,16 @@ export default function App() {
     switch (activeView) {
       case 'dashboard':
         return <Dashboard />
-      case 'agents':
-        return <AgentRoster />
       case 'vulnerabilities':
         return <FlowsView />
       case 'analysis':
         return <BudgetView />
       case 'comparison':
         return <Stats />
+      case 'schedule':
+        return <ScheduleView />
+      case 'whatif':
+        return <WhatIfView />
       case 'settings':
         return <Settings />
     }

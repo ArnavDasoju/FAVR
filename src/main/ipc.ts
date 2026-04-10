@@ -1,10 +1,12 @@
 import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
+import { writeFileSync } from 'fs'
 import { taskQueue } from './tasks/queue'
 import { agentManager } from './agents/manager'
 import { getSettings, saveSettings, saveProject, removeProject as removePersistedProject } from './store'
 import { cloudClient } from './cloud/supabase'
-import { runAnalysis } from './engine/index'
-import type { AnalysisResult } from './engine/types'
+import { runAnalysis, runWhatIf, generateReport } from './engine/index'
+import { buildAttackGraph } from './engine/attack-graph'
+import type { AnalysisResult, WhatIfConstraints } from './engine/types'
 import { loadMeridianScenario } from './data/meridian-scenario'
 import { parseDocuments } from './ingest/parser'
 import { scanCodebase } from './ingest/scanner'
@@ -134,6 +136,44 @@ export function setupIpc(): void {
     if (!latestAnalysis) throw new Error('Run analysis first')
     const results = scanCodebase(data.codebasePath, latestAnalysis.graph.vulnerabilities)
     return results
+  })
+
+  // ── What-If Scenarios ────────────────────────────────────────
+  ipcMain.handle('analysis:whatIf', async (_event, constraints: WhatIfConstraints) => {
+    if (!latestAnalysis) throw new Error('Run analysis first')
+
+    // Rebuild graph for what-if (needs adjacency maps)
+    const graph = buildAttackGraph(
+      latestAnalysis.graph.services.map(s => ({ ...s })),
+      latestAnalysis.graph.dependencies.map(d => ({ ...d })),
+      latestAnalysis.graph.vulnerabilities.map(v => ({ ...v, constraints: (v as any).constraints ?? [] }))
+    )
+
+    return runWhatIf(graph, latestAnalysis.simulation.optimalOrder, constraints)
+  })
+
+  // ── Report Export ──────────────────────────────────────────
+  ipcMain.handle('analysis:exportReport', async () => {
+    if (!latestAnalysis) throw new Error('Run analysis first')
+
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return null
+
+    const html = generateReport(latestAnalysis)
+
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Export FAVR Report',
+      defaultPath: `FAVR-Report-${new Date().toISOString().split('T')[0]}.html`,
+      filters: [
+        { name: 'HTML Report', extensions: ['html'] }
+      ]
+    })
+
+    if (result.canceled || !result.filePath) return null
+
+    writeFileSync(result.filePath, html, 'utf-8')
+    shell.showItemInFolder(result.filePath)
+    return result.filePath
   })
 
   // ── Documents ───────────────────────────────────────────────

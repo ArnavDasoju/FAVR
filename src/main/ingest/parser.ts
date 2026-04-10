@@ -120,6 +120,7 @@ function extractVulnerabilitiesFromJson(content: string): Vulnerability[] {
       description: item.description ?? '',
       severity: item.severity ?? cvssToSeverity(cvss),
       cvssScore: cvss,
+      epssScore: item.epssScore ?? cvssToExploitProb(cvss),
       exploitProbability: item.exploitProbability ?? cvssToExploitProb(cvss),
       affectedServiceIds: item.affectedServiceIds ?? [],
       affectedPackage: item.affectedPackage ?? 'unknown',
@@ -130,7 +131,9 @@ function extractVulnerabilitiesFromJson(content: string): Vulnerability[] {
       status: item.status ?? 'open',
       patchOrder: null,
       constraints: item.constraints ?? [],
-      knownExploit: item.knownExploit ?? false
+      knownExploit: item.knownExploit ?? false,
+      complianceViolations: item.complianceViolations ?? [],
+      complianceDeadlineDays: item.complianceDeadlineDays ?? null
     } as Vulnerability
   })
 }
@@ -150,7 +153,9 @@ function extractServicesFromJson(content: string): Service[] {
     sla: item.sla ?? 99.5,
     description: item.description ?? '',
     baseCompromiseProbability: 0,
-    currentRiskScore: 0
+    currentRiskScore: 0,
+    complianceFrameworks: item.complianceFrameworks ?? [],
+    maintenanceWindow: item.maintenanceWindow ?? null
   } as Service))
 }
 
@@ -184,6 +189,7 @@ function extractCvesFromText(text: string): Vulnerability[] {
     description: extractContextAroundCve(text, cveId),
     severity: 'medium' as Severity,
     cvssScore: 5.0,
+    epssScore: 0.3,
     exploitProbability: 0.3,
     affectedServiceIds: [],
     affectedPackage: 'unknown',
@@ -194,7 +200,9 @@ function extractCvesFromText(text: string): Vulnerability[] {
     status: 'open' as const,
     patchOrder: null,
     constraints: [],
-    knownExploit: false
+    knownExploit: false,
+    complianceViolations: [],
+    complianceDeadlineDays: null
   }))
 }
 

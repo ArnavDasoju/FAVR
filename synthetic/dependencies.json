@@ -1,0 +1,58 @@
+[
+  {
+    "from": "Auth Service",
+    "to": "Payment API",
+    "type": "hard",
+    "description": "Payment API authenticates all requests via Auth Service. Direct runtime dependency.",
+    "protocol": "gRPC",
+    "failure_impact": "All transactions fail if Auth Service is down"
+  },
+  {
+    "from": "Auth Service",
+    "to": "Customer Portal",
+    "type": "hard",
+    "description": "Customer Portal uses Auth Service for user login and session management.",
+    "protocol": "REST/OAuth2",
+    "failure_impact": "Users cannot log in or access accounts"
+  },
+  {
+    "from": "Auth Service",
+    "to": "Internal Dashboard",
+    "type": "soft",
+    "description": "Internal Dashboard uses Auth Service for employee SSO. Cached sessions reduce dependency.",
+    "protocol": "REST/SAML",
+    "failure_impact": "New logins fail but existing sessions continue for 24h"
+  },
+  {
+    "from": "Payment API",
+    "to": "Database Layer",
+    "type": "hard",
+    "description": "Payment API reads/writes transaction data directly to PostgreSQL.",
+    "protocol": "PostgreSQL wire protocol",
+    "failure_impact": "All transaction processing stops"
+  },
+  {
+    "from": "Auth Service",
+    "to": "Database Layer",
+    "type": "hard",
+    "description": "Auth Service stores user credentials, sessions, and OAuth tokens in PostgreSQL.",
+    "protocol": "PostgreSQL wire protocol",
+    "failure_impact": "Authentication fails for all services"
+  },
+  {
+    "from": "Customer Portal",
+    "to": "Payment API",
+    "type": "soft",
+    "description": "Customer Portal reads transaction history from Payment API. Read-only, cached.",
+    "protocol": "REST",
+    "failure_impact": "Transaction history shows stale data (cache TTL: 5min)"
+  },
+  {
+    "from": "Internal Dashboard",
+    "to": "Database Layer",
+    "type": "soft",
+    "description": "Internal Dashboard runs read-only analytics queries against a read replica.",
+    "protocol": "PostgreSQL wire protocol (read replica)",
+    "failure_impact": "Analytics data unavailable, no business impact"
+  }
+]
