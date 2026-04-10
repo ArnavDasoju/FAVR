@@ -10,6 +10,7 @@ import type { AnalysisResult, WhatIfConstraints } from './engine/types'
 import { loadMeridianScenario } from './data/meridian-scenario'
 import { parseDocuments } from './ingest/parser'
 import { scanCodebase } from './ingest/scanner'
+import { analyzeCodebase } from './ingest/codebase-analyzer'
 
 // Store the latest analysis result for quick access
 let latestAnalysis: AnalysisResult | null = null
@@ -135,6 +136,57 @@ export function setupIpc(): void {
     if (!latestAnalysis) throw new Error('Run analysis first')
     const results = scanCodebase(data.codebasePath, latestAnalysis.graph.vulnerabilities)
     return results
+  })
+
+  // ── Codebase Auto-Analysis (no demo, no uploads needed) ───
+  ipcMain.handle('analysis:analyzeCodebase', async (_event, data: {
+    codebasePath: string
+    iterations?: number
+  }) => {
+    const emit = (channel: string, payload: unknown) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(channel, payload)
+      }
+    }
+
+    try {
+      // Phase 1-3: Discover services, dependencies, vulnerabilities from real codebase
+      const codebaseResult = await analyzeCodebase(data.codebasePath, (p) => {
+        emit('analysis:progress', p)
+      })
+
+      if (codebaseResult.vulnerabilities.length === 0) {
+        emit('analysis:progress', {
+          phase: 'discovery',
+          progress: 100,
+          message: `Found ${codebaseResult.services.length} services and ${codebaseResult.stats.packagesScanned} packages — no known vulnerabilities detected.`
+        })
+        throw new Error(
+          `Scanned ${codebaseResult.stats.packagesScanned} packages across ${codebaseResult.services.length} service(s) but found no known vulnerabilities. ` +
+          `Ecosystems: ${codebaseResult.stats.ecosystems.join(', ')}. The codebase looks clean!`
+        )
+      }
+
+      // Run the full FAVR analysis engine on the discovered data
+      const result = await runAnalysis({
+        services: codebaseResult.services,
+        dependencies: codebaseResult.dependencies,
+        vulnerabilities: codebaseResult.vulnerabilities,
+        iterations: data.iterations ?? 5000,
+        onProgress: (p) => emit('analysis:progress', p)
+      })
+
+      latestAnalysis = result
+      emit('analysis:complete', serializeAnalysis(result))
+      return {
+        analysis: serializeAnalysis(result),
+        stats: codebaseResult.stats
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      emit('analysis:error', msg)
+      throw err
+    }
   })
 
   // ── What-If Scenarios ────────────────────────────────────────
