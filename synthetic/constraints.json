@@ -1,0 +1,35 @@
+{
+  "maintenance_window": {
+    "day": "Saturday",
+    "start_time": "02:00",
+    "end_time": "06:00",
+    "timezone": "EST",
+    "duration_hours": 4
+  },
+  "max_concurrent_patches": 2,
+  "devops_team_size": 3,
+  "regulatory": {
+    "framework": "PCI-DSS",
+    "scope": ["Payment API", "Auth Service", "Database Layer"],
+    "additional_review_required": true,
+    "review_time_hours": 2,
+    "audit_deadline": "2024-04-30"
+  },
+  "sla_requirements": {
+    "Payment API": 99.99,
+    "Customer Portal": 99.9,
+    "Internal Dashboard": 99.5,
+    "Auth Service": 99.99,
+    "Database Layer": 99.99
+  },
+  "rollback_policy": {
+    "max_rollback_time_minutes": 15,
+    "requires_approval": true,
+    "auto_rollback_on_failure": true
+  },
+  "change_management": {
+    "critical_services_require_two_approvers": true,
+    "change_freeze_dates": ["2024-04-15", "2024-04-30"],
+    "notification_lead_time_hours": 24
+  }
+}

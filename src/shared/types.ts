@@ -130,7 +130,17 @@ export interface IpcApi {
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
 
-export type AnalysisPhase = 'idle' | 'ingest' | 'scan' | 'graph' | 'bayesian' | 'monte-carlo' | 'pareto' | 'complete' | 'error'
+export type ComplianceFramework = 'PCI-DSS' | 'SOX' | 'HIPAA' | 'GDPR' | 'SOC2' | 'NIST' | 'ISO27001'
+
+export type AnalysisPhase = 'idle' | 'ingest' | 'scan' | 'graph' | 'bayesian' | 'monte-carlo' | 'pareto' | 'blast-radius' | 'scheduling' | 'compliance' | 'complete' | 'error'
+
+export interface FavrMaintenanceWindow {
+  day: string
+  startTime: string
+  endTime: string
+  timezone: string
+  durationMinutes: number
+}
 
 export interface FavrService {
   id: string
@@ -140,6 +150,8 @@ export interface FavrService {
   sla: number
   description: string
   currentRiskScore: number
+  complianceFrameworks: ComplianceFramework[]
+  maintenanceWindow: FavrMaintenanceWindow | null
 }
 
 export interface FavrVulnerability {
@@ -149,6 +161,7 @@ export interface FavrVulnerability {
   description: string
   severity: Severity
   cvssScore: number
+  epssScore: number
   exploitProbability: number
   affectedServiceIds: string[]
   affectedPackage: string
@@ -159,6 +172,8 @@ export interface FavrVulnerability {
   status: 'open' | 'in-progress' | 'patched' | 'verified'
   patchOrder: number | null
   knownExploit: boolean
+  complianceViolations: ComplianceFramework[]
+  complianceDeadlineDays: number | null
 }
 
 export interface FavrDependency {
@@ -197,6 +212,45 @@ export interface FavrParetoSolution {
   label?: string
 }
 
+export interface FavrBlastRadius {
+  vulnId: string
+  directServices: string[]
+  cascadeServices: string[]
+  totalDowntimeMinutes: number
+  cascadeRestarts: { serviceId: string; reason: string }[]
+}
+
+export interface FavrScheduledPatch {
+  vulnId: string
+  serviceId: string
+  windowDay: string
+  windowStart: string
+  windowEnd: string
+  estimatedStart: number
+  estimatedDuration: number
+  dependsOn: string[]
+  concurrentWith: string[]
+  weekNumber: number
+}
+
+export interface FavrWhatIfConstraints {
+  maxBudgetHours: number | null
+  skipServiceIds: string[]
+  skipVulnIds: string[]
+  maxDowntimeMinutes: number | null
+}
+
+export interface FavrWhatIfResult {
+  constraints: FavrWhatIfConstraints
+  patchableVulns: string[]
+  skippedVulns: string[]
+  residualRisk: number
+  residualRiskByService: Record<string, number>
+  totalCost: number
+  totalDowntime: number
+  complianceGaps: { framework: ComplianceFramework; vulnIds: string[] }[]
+}
+
 export interface FavrAnalysisResult {
   graph: {
     services: FavrService[]
@@ -208,6 +262,13 @@ export interface FavrAnalysisResult {
   pareto: {
     solutions: FavrParetoSolution[]
     frontierIds: string[]
+  }
+  blastRadii: Record<string, FavrBlastRadius>
+  schedule: FavrScheduledPatch[]
+  complianceSummary: {
+    frameworks: ComplianceFramework[]
+    violations: { framework: ComplianceFramework; vulnIds: string[]; urgentCount: number }[]
+    overallComplianceRisk: number
   }
   timestamp: number
   engineVersion: string

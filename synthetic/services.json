@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Payment API",
+    "tech_stack": ["Node.js 18.19.0", "Express 4.18.2", "PostgreSQL 15.4"],
+    "criticality": "CRITICAL",
+    "criticality_score": 10,
+    "description": "Processes all client transactions. Handles ~50K transactions/day. Zero downtime tolerance.",
+    "daily_users": 50000,
+    "sla_uptime": 99.99,
+    "port": 3000,
+    "pci_scope": true,
+    "owner_team": "Platform Engineering",
+    "package_managers": ["npm"],
+    "package_files": ["payment-api/package.json", "payment-api/package-lock.json"]
+  },
+  {
+    "name": "Customer Portal",
+    "tech_stack": ["React 18.2.0", "Next.js 14.1.0", "nginx 1.24.0"],
+    "criticality": "HIGH",
+    "criticality_score": 8,
+    "description": "Client-facing dashboard for account management. 8K daily active users.",
+    "daily_users": 8000,
+    "sla_uptime": 99.9,
+    "port": 443,
+    "pci_scope": false,
+    "owner_team": "Frontend Engineering",
+    "package_managers": ["npm"],
+    "package_files": ["customer-portal/package.json"]
+  },
+  {
+    "name": "Internal Dashboard",
+    "tech_stack": ["Python 3.11.7", "Flask 2.3.3", "Redis 7.0.12"],
+    "criticality": "MEDIUM",
+    "criticality_score": 5,
+    "description": "Employee analytics and monitoring tool. Used by ~100 internal staff.",
+    "daily_users": 100,
+    "sla_uptime": 99.5,
+    "port": 5000,
+    "pci_scope": false,
+    "owner_team": "Internal Tools",
+    "package_managers": ["pip"],
+    "package_files": ["internal-dashboard/requirements.txt"]
+  },
+  {
+    "name": "Auth Service",
+    "tech_stack": ["Go 1.21.6", "JWT (golang-jwt v5.2.0)", "OAuth2", "HashiCorp Vault 1.15"],
+    "criticality": "CRITICAL",
+    "criticality_score": 10,
+    "description": "Centralized authentication. Every service depends on it.",
+    "daily_users": 58100,
+    "sla_uptime": 99.99,
+    "port": 8080,
+    "pci_scope": true,
+    "owner_team": "Platform Engineering",
+    "package_managers": ["go mod"],
+    "package_files": ["auth-service/go.mod", "auth-service/go.sum"]
+  },
+  {
+    "name": "Database Layer",
+    "tech_stack": ["PostgreSQL 15.4", "pgBouncer 1.21.0", "AWS RDS"],
+    "criticality": "CRITICAL",
+    "criticality_score": 10,
+    "description": "Central data store. Payment API and Auth Service have direct dependencies.",
+    "daily_users": 0,
+    "sla_uptime": 99.99,
+    "port": 5432,
+    "pci_scope": true,
+    "owner_team": "Platform Engineering",
+    "package_managers": [],
+    "package_files": []
+  }
+]

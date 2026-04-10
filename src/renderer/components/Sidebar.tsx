@@ -1,6 +1,6 @@
 import { useAnalysisStore } from '../stores/analysisStore'
 
-type View = 'dashboard' | 'agents' | 'vulnerabilities' | 'analysis' | 'comparison' | 'settings'
+type View = 'dashboard' | 'vulnerabilities' | 'analysis' | 'comparison' | 'schedule' | 'whatif' | 'settings'
 
 interface SidebarProps {
   activeView: View
@@ -9,11 +9,12 @@ interface SidebarProps {
 
 const navItems: { id: View; label: string; shortcut: string }[] = [
   { id: 'dashboard', label: 'Dashboard', shortcut: '1' },
-  { id: 'agents', label: 'Agents', shortcut: '2' },
-  { id: 'vulnerabilities', label: 'Vulnerabilities', shortcut: '3' },
-  { id: 'analysis', label: 'Risk Analysis', shortcut: '4' },
-  { id: 'comparison', label: 'Comparison', shortcut: '5' },
-  { id: 'settings', label: 'Settings', shortcut: '6' }
+  { id: 'vulnerabilities', label: 'Vulnerabilities', shortcut: '2' },
+  { id: 'analysis', label: 'Risk Analysis', shortcut: '3' },
+  { id: 'comparison', label: 'Comparison', shortcut: '4' },
+  { id: 'schedule', label: 'Schedule', shortcut: '5' },
+  { id: 'whatif', label: 'What-If', shortcut: '6' },
+  { id: 'settings', label: 'Settings', shortcut: '7' }
 ]
 
 export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
@@ -87,6 +88,14 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
               <span className="text-[10px] text-surface-500">{vulnCount} vulns</span>
               <span className="text-[10px] text-red-400">{criticalCount} critical</span>
             </div>
+            {result.complianceSummary && result.complianceSummary.violations.some(v => v.urgentCount > 0) && (
+              <div className="mt-2 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 status-blink" />
+                <span className="text-[10px] text-purple-400 font-bold">
+                  {result.complianceSummary.violations.reduce((s, v) => s + v.urgentCount, 0)} urgent compliance
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

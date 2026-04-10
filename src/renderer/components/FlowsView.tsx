@@ -162,10 +162,16 @@ export default function FlowsView() {
                     {/* Left: Details */}
                     <div>
                       <div className="text-[10px] font-bold text-surface-500 uppercase tracking-wider mb-2">Details</div>
-                      <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="grid grid-cols-3 gap-3 mb-4">
                         <div>
                           <div className="text-[10px] text-surface-600">CVSS Score</div>
                           <div className="text-sm font-bold text-white">{vuln.cvssScore.toFixed(1)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-surface-600">EPSS Score</div>
+                          <div className={`text-sm font-bold ${vuln.epssScore > 0.5 ? 'text-red-400' : vuln.epssScore > 0.2 ? 'text-amber-400' : 'text-green-400'}`}>
+                            {(vuln.epssScore * 100).toFixed(1)}%
+                          </div>
                         </div>
                         <div>
                           <div className="text-[10px] text-surface-600">Exploit Probability</div>
@@ -179,7 +185,58 @@ export default function FlowsView() {
                           <div className="text-[10px] text-surface-600">Downtime</div>
                           <div className="text-sm font-bold text-white">{vuln.remediationDowntime}min</div>
                         </div>
+                        {vuln.complianceDeadlineDays != null && (
+                          <div>
+                            <div className="text-[10px] text-surface-600">Compliance Deadline</div>
+                            <div className={`text-sm font-bold ${vuln.complianceDeadlineDays <= 14 ? 'text-red-400' : vuln.complianceDeadlineDays <= 30 ? 'text-amber-400' : 'text-surface-300'}`}>
+                              {vuln.complianceDeadlineDays}d
+                            </div>
+                          </div>
+                        )}
                       </div>
+
+                      {/* EPSS vs CVSS Divergence */}
+                      {Math.abs(vuln.epssScore - vuln.cvssScore / 10) > 0.15 && (
+                        <div className={`mb-4 p-2 rounded-btn border text-[10px] ${
+                          vuln.epssScore > vuln.cvssScore / 10
+                            ? 'bg-red-500/10 border-red-500/20 text-red-400'
+                            : 'bg-green-500/10 border-green-500/20 text-green-400'
+                        }`}>
+                          {vuln.epssScore > vuln.cvssScore / 10
+                            ? `EPSS (${(vuln.epssScore * 100).toFixed(0)}%) significantly HIGHER than CVSS-implied risk — real-world exploit activity is high.`
+                            : `EPSS (${(vuln.epssScore * 100).toFixed(0)}%) significantly LOWER than CVSS (${vuln.cvssScore.toFixed(1)}) implies — low real-world exploitation.`
+                          }
+                        </div>
+                      )}
+
+                      {/* Compliance Violations */}
+                      {vuln.complianceViolations && vuln.complianceViolations.length > 0 && (
+                        <div className="mb-4">
+                          <div className="text-[10px] text-surface-600 mb-1">Compliance Violations</div>
+                          <div className="flex flex-wrap gap-1">
+                            {vuln.complianceViolations.map((f: string) => (
+                              <span key={f} className="text-[9px] font-bold px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">
+                                {f}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Blast Radius */}
+                      {result.blastRadii?.[vuln.id] && result.blastRadii[vuln.id].cascadeServices.length > 0 && (
+                        <div className="mb-4 bg-amber-500/10 border border-amber-500/20 rounded-btn p-2">
+                          <div className="text-[10px] font-bold text-amber-400 mb-1">
+                            Blast Radius: {result.blastRadii[vuln.id].totalDowntimeMinutes}min total downtime
+                          </div>
+                          <div className="text-[10px] text-amber-400/70">
+                            Cascade: {result.blastRadii[vuln.id].cascadeServices.map((sid: string) => {
+                              const s = result.graph.services.find(sv => sv.id === sid)
+                              return s?.name ?? sid
+                            }).join(', ')}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Description */}
                       {vuln.description && (

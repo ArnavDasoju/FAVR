@@ -1,0 +1,14 @@
+{
+  "name": "Meridian Financial Services",
+  "type": "Mid-sized fintech, cloud-native",
+  "employees": 500,
+  "clients": "B2B financial services for regional banks and credit unions",
+  "industry": "Financial Services",
+  "annual_revenue": "$85M",
+  "headquarters": "Silver Spring, MD",
+  "cloud_provider": "AWS",
+  "compliance_frameworks": ["PCI-DSS", "SOC2", "GDPR"],
+  "devops_team_size": 3,
+  "security_team_size": 2,
+  "description": "Meridian Financial Services is a mid-sized fintech company providing cloud-native B2B financial services to regional banks and credit unions. They process approximately 50,000 transactions daily through their Payment API and serve 8,000 daily active users on their Customer Portal."
+}

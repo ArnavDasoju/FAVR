@@ -1,0 +1,131 @@
+[
+  {
+    "cve_id": "CVE-2024-22019",
+    "service": "Payment API",
+    "files_affected": ["payment-api/src/server.ts", "payment-api/src/routes/transactions.ts"],
+    "packages": [{"name": "node", "current": "18.19.0", "patched": "18.19.1", "lockfile": "payment-api/package-lock.json"}],
+    "scan_confidence": 0.95,
+    "code_patterns_found": ["http.createServer", "app.listen(3000)"]
+  },
+  {
+    "cve_id": "CVE-2024-29041",
+    "service": "Payment API",
+    "files_affected": ["payment-api/src/app.ts", "payment-api/src/middleware/auth.ts", "payment-api/src/routes/index.ts"],
+    "packages": [{"name": "express", "current": "4.18.2", "patched": "4.19.2", "lockfile": "payment-api/package-lock.json"}],
+    "scan_confidence": 0.98,
+    "code_patterns_found": ["express.static()", "req.path", "res.sendFile()"],
+    "conflict_detected": {
+      "type": "shared_dependency",
+      "description": "Express upgrade to 4.19.2 changes body-parser API. Customer Portal's API proxy uses body-parser@1.20.1 which is incompatible with Express 4.19.x",
+      "affected_services": ["Customer Portal"],
+      "resolution_options": [
+        "Upgrade both Payment API and Customer Portal simultaneously",
+        "Use express 4.19.2 with body-parser@1.20.2 compatibility shim"
+      ]
+    }
+  },
+  {
+    "cve_id": "CVE-2024-24549",
+    "service": "Auth Service",
+    "files_affected": ["auth-service/internal/jwt/validator.go", "auth-service/internal/middleware/auth.go"],
+    "packages": [{"name": "github.com/golang-jwt/jwt/v5", "current": "5.2.0", "patched": "5.2.1", "lockfile": "auth-service/go.sum"}],
+    "scan_confidence": 0.99,
+    "code_patterns_found": ["jwt.Parse(", "jwt.NewWithClaims(", "SigningMethodHMAC"]
+  },
+  {
+    "cve_id": "CVE-2024-24556",
+    "service": "Database Layer",
+    "files_affected": ["infrastructure/rds/postgresql.conf", "infrastructure/rds/pg_hba.conf"],
+    "packages": [{"name": "postgresql", "current": "15.4", "patched": "15.6", "lockfile": null}],
+    "scan_confidence": 0.92,
+    "code_patterns_found": ["extended_query_protocol = on", "shared_preload_libraries"]
+  },
+  {
+    "cve_id": "CVE-2024-28849",
+    "service": "Customer Portal",
+    "files_affected": ["customer-portal/src/app/api/actions.ts", "customer-portal/src/app/api/proxy/route.ts"],
+    "packages": [{"name": "next", "current": "14.1.0", "patched": "14.1.1", "lockfile": "customer-portal/package-lock.json"}],
+    "scan_confidence": 0.96,
+    "code_patterns_found": ["'use server'", "fetch(internalUrl)"]
+  },
+  {
+    "cve_id": "CVE-2024-23334",
+    "service": "Customer Portal",
+    "files_affected": ["infrastructure/nginx/nginx.conf", "infrastructure/nginx/sites-enabled/portal.conf"],
+    "packages": [{"name": "nginx", "current": "1.24.0", "patched": "1.25.4", "lockfile": null}],
+    "scan_confidence": 0.88,
+    "code_patterns_found": ["worker_processes auto", "include /etc/nginx/modules-enabled/*.conf"]
+  },
+  {
+    "cve_id": "CVE-2024-24790",
+    "service": "Auth Service",
+    "files_affected": ["auth-service/internal/network/validator.go", "auth-service/cmd/server/main.go"],
+    "packages": [{"name": "go", "current": "1.21.6", "patched": "1.21.11", "lockfile": "auth-service/go.mod"}],
+    "scan_confidence": 0.91,
+    "code_patterns_found": ["net.ParseIP(", "netip.ParseAddr("]
+  },
+  {
+    "cve_id": "CVE-2024-22195",
+    "service": "Customer Portal",
+    "files_affected": ["customer-portal/src/components/NotificationBanner.tsx", "customer-portal/src/components/RichTextDisplay.tsx"],
+    "packages": [{"name": "react", "current": "18.2.0", "patched": "18.2.1", "lockfile": "customer-portal/package-lock.json"}],
+    "scan_confidence": 0.94,
+    "code_patterns_found": ["dangerouslySetInnerHTML", "__html:"]
+  },
+  {
+    "cve_id": "CVE-2024-6345",
+    "service": "Payment API",
+    "files_affected": ["payment-api/src/db/pool.ts", "payment-api/src/db/connection.ts"],
+    "packages": [{"name": "pg", "current": "8.11.3", "patched": "8.11.5", "lockfile": "payment-api/package-lock.json"}],
+    "scan_confidence": 0.90,
+    "code_patterns_found": ["new Pool({", "max: 20", "connectionTimeoutMillis"]
+  },
+  {
+    "cve_id": "CVE-2024-3651",
+    "service": "Internal Dashboard",
+    "files_affected": ["internal-dashboard/app.py", "internal-dashboard/config.py"],
+    "packages": [{"name": "flask", "current": "2.3.3", "patched": "3.0.1", "lockfile": "internal-dashboard/requirements.txt"}],
+    "scan_confidence": 0.97,
+    "code_patterns_found": ["app.debug = True", "FLASK_DEBUG=1"]
+  },
+  {
+    "cve_id": "CVE-2024-31449",
+    "service": "Internal Dashboard",
+    "files_affected": ["internal-dashboard/cache.py", "internal-dashboard/views/analytics.py"],
+    "packages": [{"name": "redis", "current": "7.0.12", "patched": "7.0.15", "lockfile": null}],
+    "scan_confidence": 0.85,
+    "code_patterns_found": ["redis.set(", "redis.get(", "cache.cached("]
+  },
+  {
+    "cve_id": "CVE-2024-27316",
+    "service": "Database Layer",
+    "files_affected": ["infrastructure/pgbouncer/pgbouncer.ini"],
+    "packages": [{"name": "pgbouncer", "current": "1.21.0", "patched": "1.22.1", "lockfile": null}],
+    "scan_confidence": 0.87,
+    "code_patterns_found": ["auth_type = scram-sha-256", "max_client_conn = 200"]
+  },
+  {
+    "cve_id": "CVE-2024-21538",
+    "service": "Internal Dashboard",
+    "files_affected": ["internal-dashboard/templates/custom_report.html", "internal-dashboard/views/reports.py"],
+    "packages": [{"name": "jinja2", "current": "3.1.2", "patched": "3.1.4", "lockfile": "internal-dashboard/requirements.txt"}],
+    "scan_confidence": 0.93,
+    "code_patterns_found": ["render_template_string(", "Template(user_input)"]
+  },
+  {
+    "cve_id": "CVE-2024-4068",
+    "service": "Payment API",
+    "files_affected": ["payment-api/src/utils/logger.ts"],
+    "packages": [{"name": "winston", "current": "3.11.0", "patched": "3.13.0", "lockfile": "payment-api/package-lock.json"}],
+    "scan_confidence": 0.82,
+    "code_patterns_found": ["winston.createLogger(", "logger.info(req.body"]
+  },
+  {
+    "cve_id": "CVE-2024-4367",
+    "service": "Auth Service",
+    "files_affected": ["auth-service/internal/vault/client.go", "auth-service/config/vault.hcl"],
+    "packages": [{"name": "vault", "current": "1.15.0", "patched": "1.15.6", "lockfile": null}],
+    "scan_confidence": 0.80,
+    "code_patterns_found": ["vault.NewClient(", "/v1/sys/health"]
+  }
+]

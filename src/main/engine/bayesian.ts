@@ -9,10 +9,21 @@
  * Uses iterative belief propagation until convergence.
  */
 
-import type { AttackGraph, Service, Dependency } from './types'
+import type { AttackGraph, Service, Dependency, ComplianceFramework } from './types'
 
 const MAX_ITERATIONS = 50
 const CONVERGENCE_THRESHOLD = 0.001
+
+// Compliance frameworks add a risk multiplier to affected services
+const COMPLIANCE_WEIGHT: Record<string, number> = {
+  'PCI-DSS': 1.5,
+  'HIPAA': 1.4,
+  'SOX': 1.3,
+  'GDPR': 1.25,
+  'SOC2': 1.15,
+  'NIST': 1.1,
+  'ISO27001': 1.1
+}
 
 /**
  * Propagate risk through the attack graph.
@@ -160,6 +171,8 @@ export function recomputeRiskAfterPatching(
 
 /**
  * Compute the total weighted system risk from a risk score map.
+ * Includes compliance multiplier: services under stricter regulatory frameworks
+ * contribute more heavily to total risk.
  */
 export function computeTotalRiskFromScores(
   services: Service[],
@@ -170,7 +183,12 @@ export function computeTotalRiskFromScores(
   let totalWeight = 0
 
   for (const s of services) {
-    const weight = tierWeights[s.tier] ?? 1
+    const tierWeight = tierWeights[s.tier] ?? 1
+    // Compliance multiplier: highest framework weight for this service
+    const complianceMult = s.complianceFrameworks && s.complianceFrameworks.length > 0
+      ? Math.max(...s.complianceFrameworks.map(f => COMPLIANCE_WEIGHT[f] ?? 1))
+      : 1
+    const weight = tierWeight * complianceMult
     totalWeightedRisk += (riskScores.get(s.id) ?? 0) * weight
     totalWeight += weight
   }

@@ -4,6 +4,16 @@
 
 // ─── Services & Dependencies ──────────────────────────────────
 
+export interface MaintenanceWindow {
+  day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday'
+  startTime: string             // HH:MM (24h)
+  endTime: string               // HH:MM (24h)
+  timezone: string              // e.g. 'EST'
+  durationMinutes: number       // total window length
+}
+
+export type ComplianceFramework = 'PCI-DSS' | 'SOX' | 'HIPAA' | 'GDPR' | 'SOC2' | 'NIST' | 'ISO27001'
+
 export interface Service {
   id: string
   name: string
@@ -13,6 +23,8 @@ export interface Service {
   description: string
   baseCompromiseProbability: number  // 0-1, initial probability before propagation
   currentRiskScore: number          // computed after Bayesian propagation
+  complianceFrameworks: ComplianceFramework[]  // regulatory frameworks this service falls under
+  maintenanceWindow: MaintenanceWindow | null  // when this service can be patched
 }
 
 export interface Dependency {
@@ -34,6 +46,7 @@ export interface Vulnerability {
   description: string
   severity: Severity
   cvssScore: number             // 0-10
+  epssScore: number             // 0-1, EPSS (Exploit Prediction Scoring System) probability
   exploitProbability: number    // 0-1, likelihood of exploitation
   affectedServiceIds: string[]
   affectedPackage: string       // e.g. 'express@4.18.2'
@@ -45,6 +58,8 @@ export interface Vulnerability {
   patchOrder: number | null     // assigned after Monte Carlo
   constraints: VulnConstraint[]
   knownExploit: boolean         // is there a known exploit in the wild?
+  complianceViolations: ComplianceFramework[]  // which frameworks this CVE violates
+  complianceDeadlineDays: number | null  // days until compliance violation if unpatched
 }
 
 export interface VulnConstraint {
@@ -104,6 +119,51 @@ export interface ParetoFrontier {
   frontierIds: string[]   // IDs of non-dominated solutions
 }
 
+// ─── Blast Radius ────────────────────────────────────────────
+
+export interface BlastRadius {
+  vulnId: string
+  directServices: string[]          // services directly affected by the vuln
+  cascadeServices: string[]         // services indirectly affected via dependencies
+  totalDowntimeMinutes: number      // total downtime across all affected services
+  cascadeRestarts: { serviceId: string; reason: string }[]
+}
+
+// ─── Maintenance Schedule ────────────────────────────────────
+
+export interface ScheduledPatch {
+  vulnId: string
+  serviceId: string                 // primary service being patched
+  windowDay: string
+  windowStart: string
+  windowEnd: string
+  estimatedStart: number            // minutes from schedule start
+  estimatedDuration: number         // minutes
+  dependsOn: string[]               // vulnIds that must be patched first
+  concurrentWith: string[]          // vulnIds patched in the same window
+  weekNumber: number                // which week (1, 2, 3...) this gets scheduled
+}
+
+// ─── What-If Scenario ────────────────────────────────────────
+
+export interface WhatIfConstraints {
+  maxBudgetHours: number | null     // max person-hours available
+  skipServiceIds: string[]          // services to exclude from patching
+  skipVulnIds: string[]             // vulns to skip
+  maxDowntimeMinutes: number | null // max allowed downtime
+}
+
+export interface WhatIfResult {
+  constraints: WhatIfConstraints
+  patchableVulns: string[]          // vulns that can be patched within constraints
+  skippedVulns: string[]            // vulns that couldn't fit
+  residualRisk: number              // risk after patching what we can
+  residualRiskByService: Record<string, number>
+  totalCost: number
+  totalDowntime: number
+  complianceGaps: { framework: ComplianceFramework; vulnIds: string[] }[]
+}
+
 // ─── Analysis Result (complete output) ────────────────────────
 
 export interface AnalysisResult {
@@ -115,6 +175,13 @@ export interface AnalysisResult {
   riskScores: Record<string, number>  // serviceId -> propagated risk
   simulation: SimulationResult
   pareto: ParetoFrontier
+  blastRadii: Record<string, BlastRadius>  // vulnId -> blast radius
+  schedule: ScheduledPatch[]               // maintenance-window-aware schedule
+  complianceSummary: {
+    frameworks: ComplianceFramework[]
+    violations: { framework: ComplianceFramework; vulnIds: string[]; urgentCount: number }[]
+    overallComplianceRisk: number  // 0-1
+  }
   timestamp: number
   engineVersion: string
 }
@@ -122,7 +189,7 @@ export interface AnalysisResult {
 // ─── Progress Callback ────────────────────────────────────────
 
 export interface AnalysisProgress {
-  phase: 'graph' | 'bayesian' | 'monte-carlo' | 'pareto' | 'complete'
+  phase: 'graph' | 'bayesian' | 'monte-carlo' | 'pareto' | 'blast-radius' | 'scheduling' | 'compliance' | 'complete'
   progress: number  // 0-100
   message: string
 }

@@ -1,0 +1,3514 @@
+{
+  "pipeline_metadata": {
+    "elapsed_seconds": 0.18,
+    "total_cves": 15,
+    "total_services": 5,
+    "timestamp": 1775781747.782197
+  },
+  "services": {
+    "Payment API": {
+      "criticality": "CRITICAL",
+      "vulnerability_count": 4,
+      "propagated_risk": 1.0,
+      "severities": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "MEDIUM": 0,
+        "LOW": 1
+      }
+    },
+    "Customer Portal": {
+      "criticality": "HIGH",
+      "vulnerability_count": 3,
+      "propagated_risk": 0.9999,
+      "severities": {
+        "CRITICAL": 0,
+        "HIGH": 3,
+        "MEDIUM": 0,
+        "LOW": 0
+      }
+    },
+    "Internal Dashboard": {
+      "criticality": "MEDIUM",
+      "vulnerability_count": 3,
+      "propagated_risk": 0.9841,
+      "severities": {
+        "CRITICAL": 0,
+        "HIGH": 0,
+        "MEDIUM": 3,
+        "LOW": 0
+      }
+    },
+    "Auth Service": {
+      "criticality": "CRITICAL",
+      "vulnerability_count": 3,
+      "propagated_risk": 1.0,
+      "severities": {
+        "CRITICAL": 1,
+        "HIGH": 1,
+        "MEDIUM": 0,
+        "LOW": 1
+      }
+    },
+    "Database Layer": {
+      "criticality": "CRITICAL",
+      "vulnerability_count": 2,
+      "propagated_risk": 0.999,
+      "severities": {
+        "CRITICAL": 1,
+        "HIGH": 0,
+        "MEDIUM": 1,
+        "LOW": 0
+      }
+    }
+  },
+  "scan": {
+    "findings": [
+      {
+        "cve_id": "CVE-2024-22019",
+        "service": "Payment API",
+        "severity": "CRITICAL",
+        "cvss_score": 9.8,
+        "files_affected": [
+          "payment-api/src/server.ts",
+          "payment-api/src/routes/transactions.ts"
+        ],
+        "packages": [
+          {
+            "name": "node",
+            "current": "18.19.0",
+            "patched": "18.19.1",
+            "lockfile": "payment-api/package-lock.json"
+          }
+        ],
+        "scan_confidence": 0.95,
+        "code_patterns_found": [
+          "http.createServer",
+          "app.listen(3000)"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": true,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-29041",
+        "service": "Payment API",
+        "severity": "CRITICAL",
+        "cvss_score": 9.1,
+        "files_affected": [
+          "payment-api/src/app.ts",
+          "payment-api/src/middleware/auth.ts",
+          "payment-api/src/routes/index.ts"
+        ],
+        "packages": [
+          {
+            "name": "express",
+            "current": "4.18.2",
+            "patched": "4.19.2",
+            "lockfile": "payment-api/package-lock.json"
+          }
+        ],
+        "scan_confidence": 0.98,
+        "code_patterns_found": [
+          "express.static()",
+          "req.path",
+          "res.sendFile()"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": true,
+        "conflict_detected": {
+          "type": "shared_dependency",
+          "description": "Express upgrade to 4.19.2 changes body-parser API. Customer Portal's API proxy uses body-parser@1.20.1 which is incompatible with Express 4.19.x",
+          "affected_services": [
+            "Customer Portal"
+          ],
+          "resolution_options": [
+            "Upgrade both Payment API and Customer Portal simultaneously",
+            "Use express 4.19.2 with body-parser@1.20.2 compatibility shim"
+          ]
+        }
+      },
+      {
+        "cve_id": "CVE-2024-24549",
+        "service": "Auth Service",
+        "severity": "CRITICAL",
+        "cvss_score": 9.4,
+        "files_affected": [
+          "auth-service/internal/jwt/validator.go",
+          "auth-service/internal/middleware/auth.go"
+        ],
+        "packages": [
+          {
+            "name": "github.com/golang-jwt/jwt/v5",
+            "current": "5.2.0",
+            "patched": "5.2.1",
+            "lockfile": "auth-service/go.sum"
+          }
+        ],
+        "scan_confidence": 0.99,
+        "code_patterns_found": [
+          "jwt.Parse(",
+          "jwt.NewWithClaims(",
+          "SigningMethodHMAC"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": true,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-24556",
+        "service": "Database Layer",
+        "severity": "CRITICAL",
+        "cvss_score": 9.0,
+        "files_affected": [
+          "infrastructure/rds/postgresql.conf",
+          "infrastructure/rds/pg_hba.conf"
+        ],
+        "packages": [
+          {
+            "name": "postgresql",
+            "current": "15.4",
+            "patched": "15.6",
+            "lockfile": null
+          }
+        ],
+        "scan_confidence": 0.92,
+        "code_patterns_found": [
+          "extended_query_protocol = on",
+          "shared_preload_libraries"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-28849",
+        "service": "Customer Portal",
+        "severity": "HIGH",
+        "cvss_score": 7.5,
+        "files_affected": [
+          "customer-portal/src/app/api/actions.ts",
+          "customer-portal/src/app/api/proxy/route.ts"
+        ],
+        "packages": [
+          {
+            "name": "next",
+            "current": "14.1.0",
+            "patched": "14.1.1",
+            "lockfile": "customer-portal/package-lock.json"
+          }
+        ],
+        "scan_confidence": 0.96,
+        "code_patterns_found": [
+          "'use server'",
+          "fetch(internalUrl)"
+        ],
+        "service_criticality": "HIGH",
+        "pci_scope": false,
+        "exploit_available": true,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-23334",
+        "service": "Customer Portal",
+        "severity": "HIGH",
+        "cvss_score": 7.8,
+        "files_affected": [
+          "infrastructure/nginx/nginx.conf",
+          "infrastructure/nginx/sites-enabled/portal.conf"
+        ],
+        "packages": [
+          {
+            "name": "nginx",
+            "current": "1.24.0",
+            "patched": "1.25.4",
+            "lockfile": null
+          }
+        ],
+        "scan_confidence": 0.88,
+        "code_patterns_found": [
+          "worker_processes auto",
+          "include /etc/nginx/modules-enabled/*.conf"
+        ],
+        "service_criticality": "HIGH",
+        "pci_scope": false,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-24790",
+        "service": "Auth Service",
+        "severity": "HIGH",
+        "cvss_score": 7.3,
+        "files_affected": [
+          "auth-service/internal/network/validator.go",
+          "auth-service/cmd/server/main.go"
+        ],
+        "packages": [
+          {
+            "name": "go",
+            "current": "1.21.6",
+            "patched": "1.21.11",
+            "lockfile": "auth-service/go.mod"
+          }
+        ],
+        "scan_confidence": 0.91,
+        "code_patterns_found": [
+          "net.ParseIP(",
+          "netip.ParseAddr("
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-22195",
+        "service": "Customer Portal",
+        "severity": "HIGH",
+        "cvss_score": 7.1,
+        "files_affected": [
+          "customer-portal/src/components/NotificationBanner.tsx",
+          "customer-portal/src/components/RichTextDisplay.tsx"
+        ],
+        "packages": [
+          {
+            "name": "react",
+            "current": "18.2.0",
+            "patched": "18.2.1",
+            "lockfile": "customer-portal/package-lock.json"
+          }
+        ],
+        "scan_confidence": 0.94,
+        "code_patterns_found": [
+          "dangerouslySetInnerHTML",
+          "__html:"
+        ],
+        "service_criticality": "HIGH",
+        "pci_scope": false,
+        "exploit_available": true,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-6345",
+        "service": "Payment API",
+        "severity": "HIGH",
+        "cvss_score": 7.0,
+        "files_affected": [
+          "payment-api/src/db/pool.ts",
+          "payment-api/src/db/connection.ts"
+        ],
+        "packages": [
+          {
+            "name": "pg",
+            "current": "8.11.3",
+            "patched": "8.11.5",
+            "lockfile": "payment-api/package-lock.json"
+          }
+        ],
+        "scan_confidence": 0.9,
+        "code_patterns_found": [
+          "new Pool({",
+          "max: 20",
+          "connectionTimeoutMillis"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-3651",
+        "service": "Internal Dashboard",
+        "severity": "MEDIUM",
+        "cvss_score": 6.5,
+        "files_affected": [
+          "internal-dashboard/app.py",
+          "internal-dashboard/config.py"
+        ],
+        "packages": [
+          {
+            "name": "flask",
+            "current": "2.3.3",
+            "patched": "3.0.1",
+            "lockfile": "internal-dashboard/requirements.txt"
+          }
+        ],
+        "scan_confidence": 0.97,
+        "code_patterns_found": [
+          "app.debug = True",
+          "FLASK_DEBUG=1"
+        ],
+        "service_criticality": "MEDIUM",
+        "pci_scope": false,
+        "exploit_available": true,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-31449",
+        "service": "Internal Dashboard",
+        "severity": "MEDIUM",
+        "cvss_score": 6.2,
+        "files_affected": [
+          "internal-dashboard/cache.py",
+          "internal-dashboard/views/analytics.py"
+        ],
+        "packages": [
+          {
+            "name": "redis",
+            "current": "7.0.12",
+            "patched": "7.0.15",
+            "lockfile": null
+          }
+        ],
+        "scan_confidence": 0.85,
+        "code_patterns_found": [
+          "redis.set(",
+          "redis.get(",
+          "cache.cached("
+        ],
+        "service_criticality": "MEDIUM",
+        "pci_scope": false,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-27316",
+        "service": "Database Layer",
+        "severity": "MEDIUM",
+        "cvss_score": 5.9,
+        "files_affected": [
+          "infrastructure/pgbouncer/pgbouncer.ini"
+        ],
+        "packages": [
+          {
+            "name": "pgbouncer",
+            "current": "1.21.0",
+            "patched": "1.22.1",
+            "lockfile": null
+          }
+        ],
+        "scan_confidence": 0.87,
+        "code_patterns_found": [
+          "auth_type = scram-sha-256",
+          "max_client_conn = 200"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-21538",
+        "service": "Internal Dashboard",
+        "severity": "MEDIUM",
+        "cvss_score": 5.5,
+        "files_affected": [
+          "internal-dashboard/templates/custom_report.html",
+          "internal-dashboard/views/reports.py"
+        ],
+        "packages": [
+          {
+            "name": "jinja2",
+            "current": "3.1.2",
+            "patched": "3.1.4",
+            "lockfile": "internal-dashboard/requirements.txt"
+          }
+        ],
+        "scan_confidence": 0.93,
+        "code_patterns_found": [
+          "render_template_string(",
+          "Template(user_input)"
+        ],
+        "service_criticality": "MEDIUM",
+        "pci_scope": false,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-4068",
+        "service": "Payment API",
+        "severity": "LOW",
+        "cvss_score": 3.7,
+        "files_affected": [
+          "payment-api/src/utils/logger.ts"
+        ],
+        "packages": [
+          {
+            "name": "winston",
+            "current": "3.11.0",
+            "patched": "3.13.0",
+            "lockfile": "payment-api/package-lock.json"
+          }
+        ],
+        "scan_confidence": 0.82,
+        "code_patterns_found": [
+          "winston.createLogger(",
+          "logger.info(req.body"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": false,
+        "conflict_detected": null
+      },
+      {
+        "cve_id": "CVE-2024-4367",
+        "service": "Auth Service",
+        "severity": "LOW",
+        "cvss_score": 3.1,
+        "files_affected": [
+          "auth-service/internal/vault/client.go",
+          "auth-service/config/vault.hcl"
+        ],
+        "packages": [
+          {
+            "name": "vault",
+            "current": "1.15.0",
+            "patched": "1.15.6",
+            "lockfile": null
+          }
+        ],
+        "scan_confidence": 0.8,
+        "code_patterns_found": [
+          "vault.NewClient(",
+          "/v1/sys/health"
+        ],
+        "service_criticality": "CRITICAL",
+        "pci_scope": true,
+        "exploit_available": false,
+        "conflict_detected": null
+      }
+    ]
+  },
+  "optimization": {
+    "bayesian": {
+      "prior_risks": {
+        "Payment API": 1.0,
+        "Customer Portal": 0.9995765,
+        "Internal Dashboard": 0.973495,
+        "Auth Service": 1.0,
+        "Database Layer": 0.9590000000000001
+      },
+      "posterior_risks": {
+        "Payment API": 1.0,
+        "Customer Portal": 0.9999153,
+        "Internal Dashboard": 0.984097,
+        "Auth Service": 1.0,
+        "Database Layer": 0.999005567632
+      },
+      "propagated_cves": [
+        {
+          "cve_id": "CVE-2024-22019",
+          "severity": "CRITICAL",
+          "cvss_score": 9.8,
+          "affected_service": "Payment API",
+          "affected_package": "node",
+          "affected_version": "18.19.0",
+          "patched_version": "18.19.1",
+          "description": "A vulnerability in Node.js HTTP request handling allows an attacker to send a specially crafted HTTP request that causes the server to crash, enabling remote code execution.",
+          "exploit_available": true,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "LOW",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": true,
+          "estimated_patch_hours": 3,
+          "complexity_score": 7,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-22019"
+          ],
+          "prior_service_risk": 1.0,
+          "propagated_service_risk": 1.0,
+          "risk_multiplier": 1.0,
+          "effective_score": 9.8
+        },
+        {
+          "cve_id": "CVE-2024-29041",
+          "severity": "CRITICAL",
+          "cvss_score": 9.1,
+          "affected_service": "Payment API",
+          "affected_package": "express",
+          "affected_version": "4.18.2",
+          "patched_version": "4.19.2",
+          "description": "Express.js path traversal vulnerability allows attackers to bypass URL validation and access arbitrary files on the server. Combined with Payment API's transaction data, this could expose financial records.",
+          "exploit_available": true,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "LOW",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": true,
+          "estimated_patch_hours": 4,
+          "complexity_score": 8,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "conflict_note": "Upgrading Express to 4.19.2 requires updating body-parser middleware which is also used by Customer Portal's API proxy. Must coordinate both services.",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-29041"
+          ],
+          "prior_service_risk": 1.0,
+          "propagated_service_risk": 1.0,
+          "risk_multiplier": 1.0,
+          "effective_score": 9.1
+        },
+        {
+          "cve_id": "CVE-2024-24549",
+          "severity": "CRITICAL",
+          "cvss_score": 9.4,
+          "affected_service": "Auth Service",
+          "affected_package": "golang-jwt",
+          "affected_version": "5.2.0",
+          "patched_version": "5.2.1",
+          "description": "Authentication bypass in golang-jwt allows attackers to forge valid JWT tokens by exploiting a flaw in HMAC signature validation. Grants unauthorized access to any service using Auth Service.",
+          "exploit_available": true,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "LOW",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": true,
+          "estimated_patch_hours": 2,
+          "complexity_score": 5,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-24549"
+          ],
+          "prior_service_risk": 1.0,
+          "propagated_service_risk": 1.0,
+          "risk_multiplier": 1.0,
+          "effective_score": 9.4
+        },
+        {
+          "cve_id": "CVE-2024-24556",
+          "severity": "CRITICAL",
+          "cvss_score": 9.0,
+          "affected_service": "Database Layer",
+          "affected_package": "postgresql",
+          "affected_version": "15.4",
+          "patched_version": "15.6",
+          "description": "SQL injection vulnerability in PostgreSQL's extended query protocol allows authenticated users to execute arbitrary SQL commands, potentially leading to full database compromise.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "LOW",
+          "privileges_required": "LOW",
+          "user_interaction": "NONE",
+          "compliance_relevant": true,
+          "estimated_patch_hours": 5,
+          "complexity_score": 9,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-24556"
+          ],
+          "prior_service_risk": 0.959,
+          "propagated_service_risk": 0.999,
+          "risk_multiplier": 1.0417,
+          "effective_score": 9.38
+        },
+        {
+          "cve_id": "CVE-2024-28849",
+          "severity": "HIGH",
+          "cvss_score": 7.5,
+          "affected_service": "Customer Portal",
+          "affected_package": "next",
+          "affected_version": "14.1.0",
+          "patched_version": "14.1.1",
+          "description": "Server-Side Request Forgery (SSRF) in Next.js Server Actions allows attackers to make requests to internal services, potentially accessing Payment API transaction data.",
+          "exploit_available": true,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "LOW",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 2,
+          "complexity_score": 4,
+          "service_criticality": 8,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-28849"
+          ],
+          "prior_service_risk": 0.9996,
+          "propagated_service_risk": 0.9999,
+          "risk_multiplier": 1.0003,
+          "effective_score": 7.5
+        },
+        {
+          "cve_id": "CVE-2024-23334",
+          "severity": "HIGH",
+          "cvss_score": 7.8,
+          "affected_service": "Customer Portal",
+          "affected_package": "nginx",
+          "affected_version": "1.24.0",
+          "patched_version": "1.25.4",
+          "description": "Privilege escalation in nginx allows local attackers to gain root access via specially crafted configuration directives. Could lead to full server compromise.",
+          "exploit_available": false,
+          "attack_vector": "LOCAL",
+          "attack_complexity": "LOW",
+          "privileges_required": "LOW",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 3,
+          "complexity_score": 6,
+          "service_criticality": 8,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-23334"
+          ],
+          "prior_service_risk": 0.9996,
+          "propagated_service_risk": 0.9999,
+          "risk_multiplier": 1.0003,
+          "effective_score": 7.8
+        },
+        {
+          "cve_id": "CVE-2024-24790",
+          "severity": "HIGH",
+          "cvss_score": 7.3,
+          "affected_service": "Auth Service",
+          "affected_package": "go",
+          "affected_version": "1.21.6",
+          "patched_version": "1.21.11",
+          "description": "Memory corruption vulnerability in Go runtime's net/netip package can be exploited to cause denial of service or potentially execute arbitrary code.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "HIGH",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": true,
+          "estimated_patch_hours": 4,
+          "complexity_score": 7,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-24790"
+          ],
+          "prior_service_risk": 1.0,
+          "propagated_service_risk": 1.0,
+          "risk_multiplier": 1.0,
+          "effective_score": 7.3
+        },
+        {
+          "cve_id": "CVE-2024-22195",
+          "severity": "HIGH",
+          "cvss_score": 7.1,
+          "affected_service": "Customer Portal",
+          "affected_package": "react",
+          "affected_version": "18.2.0",
+          "patched_version": "18.2.1",
+          "description": "Cross-site scripting (XSS) vulnerability in React's dangerouslySetInnerHTML allows injection of malicious scripts through user-controlled content in the Customer Portal.",
+          "exploit_available": true,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "LOW",
+          "privileges_required": "NONE",
+          "user_interaction": "REQUIRED",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 2,
+          "complexity_score": 3,
+          "service_criticality": 8,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-22195"
+          ],
+          "prior_service_risk": 0.9996,
+          "propagated_service_risk": 0.9999,
+          "risk_multiplier": 1.0003,
+          "effective_score": 7.1
+        },
+        {
+          "cve_id": "CVE-2024-6345",
+          "severity": "HIGH",
+          "cvss_score": 7.0,
+          "affected_service": "Payment API",
+          "affected_package": "pg",
+          "affected_version": "8.11.3",
+          "patched_version": "8.11.5",
+          "description": "Connection pool exhaustion vulnerability in node-postgres allows attackers to consume all available database connections, causing denial of service for the Payment API.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "HIGH",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": true,
+          "estimated_patch_hours": 2,
+          "complexity_score": 4,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-6345"
+          ],
+          "prior_service_risk": 1.0,
+          "propagated_service_risk": 1.0,
+          "risk_multiplier": 1.0,
+          "effective_score": 7.0
+        },
+        {
+          "cve_id": "CVE-2024-3651",
+          "severity": "MEDIUM",
+          "cvss_score": 6.5,
+          "affected_service": "Internal Dashboard",
+          "affected_package": "flask",
+          "affected_version": "2.3.3",
+          "patched_version": "3.0.1",
+          "description": "Information disclosure in Flask's debug mode error handler exposes internal stack traces, environment variables, and source code to unauthenticated users.",
+          "exploit_available": true,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "LOW",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 3,
+          "complexity_score": 6,
+          "service_criticality": 5,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-3651"
+          ],
+          "prior_service_risk": 0.9735,
+          "propagated_service_risk": 0.9841,
+          "risk_multiplier": 1.0109,
+          "effective_score": 6.57
+        },
+        {
+          "cve_id": "CVE-2024-31449",
+          "severity": "MEDIUM",
+          "cvss_score": 6.2,
+          "affected_service": "Internal Dashboard",
+          "affected_package": "redis",
+          "affected_version": "7.0.12",
+          "patched_version": "7.0.15",
+          "description": "Cache poisoning vulnerability in Redis allows authenticated users to inject malicious data into cached responses, potentially serving corrupted analytics data.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "HIGH",
+          "privileges_required": "LOW",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 2,
+          "complexity_score": 4,
+          "service_criticality": 5,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-31449"
+          ],
+          "prior_service_risk": 0.9735,
+          "propagated_service_risk": 0.9841,
+          "risk_multiplier": 1.0109,
+          "effective_score": 6.27
+        },
+        {
+          "cve_id": "CVE-2024-27316",
+          "severity": "MEDIUM",
+          "cvss_score": 5.9,
+          "affected_service": "Database Layer",
+          "affected_package": "pgbouncer",
+          "affected_version": "1.21.0",
+          "patched_version": "1.22.1",
+          "description": "Denial of Service vulnerability in pgBouncer's connection handling allows attackers to exhaust the connection pool by sending malformed SCRAM authentication messages.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "HIGH",
+          "privileges_required": "NONE",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 2,
+          "complexity_score": 5,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-27316"
+          ],
+          "prior_service_risk": 0.959,
+          "propagated_service_risk": 0.999,
+          "risk_multiplier": 1.0417,
+          "effective_score": 6.15
+        },
+        {
+          "cve_id": "CVE-2024-21538",
+          "severity": "MEDIUM",
+          "cvss_score": 5.5,
+          "affected_service": "Internal Dashboard",
+          "affected_package": "jinja2",
+          "affected_version": "3.1.2",
+          "patched_version": "3.1.4",
+          "description": "Server-side template injection in Jinja2 allows authenticated users to execute arbitrary Python code through crafted template expressions in the analytics dashboard.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "HIGH",
+          "privileges_required": "LOW",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 2,
+          "complexity_score": 3,
+          "service_criticality": 5,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-21538"
+          ],
+          "prior_service_risk": 0.9735,
+          "propagated_service_risk": 0.9841,
+          "risk_multiplier": 1.0109,
+          "effective_score": 5.56
+        },
+        {
+          "cve_id": "CVE-2024-4068",
+          "severity": "LOW",
+          "cvss_score": 3.7,
+          "affected_service": "Payment API",
+          "affected_package": "winston",
+          "affected_version": "3.11.0",
+          "patched_version": "3.13.0",
+          "description": "Minor logging vulnerability in Winston allows log injection through unsanitized user input, potentially corrupting audit trails.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "HIGH",
+          "privileges_required": "LOW",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 1,
+          "complexity_score": 2,
+          "service_criticality": 10,
+          "remediation_type": "version_upgrade",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-4068"
+          ],
+          "prior_service_risk": 1.0,
+          "propagated_service_risk": 1.0,
+          "risk_multiplier": 1.0,
+          "effective_score": 3.7
+        },
+        {
+          "cve_id": "CVE-2024-4367",
+          "severity": "LOW",
+          "cvss_score": 3.1,
+          "affected_service": "Auth Service",
+          "affected_package": "vault",
+          "affected_version": "1.15.0",
+          "patched_version": "1.15.6",
+          "description": "Deprecated API endpoint in HashiCorp Vault returns verbose error messages that could leak internal service topology information to authenticated users.",
+          "exploit_available": false,
+          "attack_vector": "NETWORK",
+          "attack_complexity": "HIGH",
+          "privileges_required": "HIGH",
+          "user_interaction": "NONE",
+          "compliance_relevant": false,
+          "estimated_patch_hours": 1,
+          "complexity_score": 2,
+          "service_criticality": 10,
+          "remediation_type": "configuration_change",
+          "references": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-4367"
+          ],
+          "prior_service_risk": 1.0,
+          "propagated_service_risk": 1.0,
+          "risk_multiplier": 1.0,
+          "effective_score": 3.1
+        }
+      ]
+    },
+    "monte_carlo": {
+      "optimal_order": [
+        "CVE-2024-24549",
+        "CVE-2024-22019",
+        "CVE-2024-24556",
+        "CVE-2024-29041",
+        "CVE-2024-23334",
+        "CVE-2024-28849",
+        "CVE-2024-6345",
+        "CVE-2024-24790",
+        "CVE-2024-22195",
+        "CVE-2024-31449",
+        "CVE-2024-3651",
+        "CVE-2024-27316",
+        "CVE-2024-21538",
+        "CVE-2024-4068",
+        "CVE-2024-4367"
+      ],
+      "optimal_score": 728.94,
+      "naive_score": 728.12,
+      "improvement_pct": -0.1,
+      "risk_curve": [
+        {
+          "step": 0,
+          "risk": 105.73
+        },
+        {
+          "step": 1,
+          "risk": 96.38
+        },
+        {
+          "step": 2,
+          "risk": 86.6
+        },
+        {
+          "step": 3,
+          "risk": 77.24
+        },
+        {
+          "step": 4,
+          "risk": 68.13
+        },
+        {
+          "step": 5,
+          "risk": 60.31
+        },
+        {
+          "step": 6,
+          "risk": 52.79
+        },
+        {
+          "step": 7,
+          "risk": 45.79
+        },
+        {
+          "step": 8,
+          "risk": 38.52
+        },
+        {
+          "step": 9,
+          "risk": 31.38
+        },
+        {
+          "step": 10,
+          "risk": 25.12
+        },
+        {
+          "step": 11,
+          "risk": 18.57
+        },
+        {
+          "step": 12,
+          "risk": 12.41
+        },
+        {
+          "step": 13,
+          "risk": 6.83
+        },
+        {
+          "step": 14,
+          "risk": 3.12
+        },
+        {
+          "step": 15,
+          "risk": 0.02
+        }
+      ],
+      "naive_curve": [
+        {
+          "step": 0,
+          "risk": 105.73
+        },
+        {
+          "step": 1,
+          "risk": 96.0
+        },
+        {
+          "step": 2,
+          "risk": 86.58
+        },
+        {
+          "step": 3,
+          "risk": 77.51
+        },
+        {
+          "step": 4,
+          "risk": 68.14
+        },
+        {
+          "step": 5,
+          "risk": 60.31
+        },
+        {
+          "step": 6,
+          "risk": 52.79
+        },
+        {
+          "step": 7,
+          "risk": 45.52
+        },
+        {
+          "step": 8,
+          "risk": 38.38
+        },
+        {
+          "step": 9,
+          "risk": 31.39
+        },
+        {
+          "step": 10,
+          "risk": 24.84
+        },
+        {
+          "step": 11,
+          "risk": 18.55
+        },
+        {
+          "step": 12,
+          "risk": 12.41
+        },
+        {
+          "step": 13,
+          "risk": 6.83
+        },
+        {
+          "step": 14,
+          "risk": 3.12
+        },
+        {
+          "step": 15,
+          "risk": 0.02
+        }
+      ],
+      "confidence_intervals": {
+        "CVE-2024-24549": {
+          "median_position": 2,
+          "ci_low": 0,
+          "ci_high": 3,
+          "stability": 0.9212
+        },
+        "CVE-2024-22019": {
+          "median_position": 0,
+          "ci_low": 0,
+          "ci_high": 3,
+          "stability": 0.9393
+        },
+        "CVE-2024-24556": {
+          "median_position": 2,
+          "ci_low": 0,
+          "ci_high": 3,
+          "stability": 0.9275
+        },
+        "CVE-2024-29041": {
+          "median_position": 2,
+          "ci_low": 0,
+          "ci_high": 3,
+          "stability": 0.9382
+        },
+        "CVE-2024-23334": {
+          "median_position": 4,
+          "ci_low": 3,
+          "ci_high": 7,
+          "stability": 0.9277
+        },
+        "CVE-2024-28849": {
+          "median_position": 5,
+          "ci_low": 4,
+          "ci_high": 8,
+          "stability": 0.9175
+        },
+        "CVE-2024-6345": {
+          "median_position": 7,
+          "ci_low": 5,
+          "ci_high": 10,
+          "stability": 0.8943
+        },
+        "CVE-2024-24790": {
+          "median_position": 6,
+          "ci_low": 4,
+          "ci_high": 9,
+          "stability": 0.8999
+        },
+        "CVE-2024-22195": {
+          "median_position": 7,
+          "ci_low": 5,
+          "ci_high": 9,
+          "stability": 0.9038
+        },
+        "CVE-2024-31449": {
+          "median_position": 10,
+          "ci_low": 8,
+          "ci_high": 12,
+          "stability": 0.9259
+        },
+        "CVE-2024-3651": {
+          "median_position": 9,
+          "ci_low": 7,
+          "ci_high": 11,
+          "stability": 0.9119
+        },
+        "CVE-2024-27316": {
+          "median_position": 10,
+          "ci_low": 8,
+          "ci_high": 12,
+          "stability": 0.9254
+        },
+        "CVE-2024-21538": {
+          "median_position": 12,
+          "ci_low": 10,
+          "ci_high": 12,
+          "stability": 0.9603
+        },
+        "CVE-2024-4068": {
+          "median_position": 13,
+          "ci_low": 13,
+          "ci_high": 14,
+          "stability": 0.9819
+        },
+        "CVE-2024-4367": {
+          "median_position": 14,
+          "ci_low": 13,
+          "ci_high": 14,
+          "stability": 0.9819
+        }
+      },
+      "iterations_run": 2000
+    },
+    "pareto": {
+      "front_size": 4,
+      "profiles": [
+        {
+          "ordering": [
+            "CVE-2024-22019",
+            "CVE-2024-24549",
+            "CVE-2024-24556",
+            "CVE-2024-29041",
+            "CVE-2024-23334",
+            "CVE-2024-28849",
+            "CVE-2024-24790",
+            "CVE-2024-22195",
+            "CVE-2024-6345",
+            "CVE-2024-27316",
+            "CVE-2024-31449",
+            "CVE-2024-3651",
+            "CVE-2024-21538",
+            "CVE-2024-4068",
+            "CVE-2024-4367"
+          ],
+          "scores": {
+            "risk": 727.93,
+            "downtime": 54.55,
+            "cost": 37500,
+            "compliance_gap": 20
+          },
+          "label": "Maximum Security",
+          "summary": "Patches highest-risk vulnerabilities first. Risk exposure: 728, but requires 54.5hrs downtime."
+        },
+        {
+          "ordering": [
+            "CVE-2024-22019",
+            "CVE-2024-29041",
+            "CVE-2024-24556",
+            "CVE-2024-24549",
+            "CVE-2024-23334",
+            "CVE-2024-6345",
+            "CVE-2024-24790",
+            "CVE-2024-28849",
+            "CVE-2024-22195",
+            "CVE-2024-3651",
+            "CVE-2024-31449",
+            "CVE-2024-27316",
+            "CVE-2024-21538",
+            "CVE-2024-4068",
+            "CVE-2024-4367"
+          ],
+          "scores": {
+            "risk": 728.79,
+            "downtime": 54.55,
+            "cost": 37500,
+            "compliance_gap": 17
+          },
+          "label": "Minimum Disruption",
+          "summary": "Minimizes service disruption to 54.5hrs. Risk exposure: 729. Best for teams with tight maintenance windows."
+        },
+        {
+          "ordering": [
+            "CVE-2024-22019",
+            "CVE-2024-24549",
+            "CVE-2024-24556",
+            "CVE-2024-29041",
+            "CVE-2024-6345",
+            "CVE-2024-24790",
+            "CVE-2024-28849",
+            "CVE-2024-23334",
+            "CVE-2024-22195",
+            "CVE-2024-3651",
+            "CVE-2024-31449",
+            "CVE-2024-27316",
+            "CVE-2024-21538",
+            "CVE-2024-4068",
+            "CVE-2024-4367"
+          ],
+          "scores": {
+            "risk": 729.79,
+            "downtime": 54.55,
+            "cost": 37500,
+            "compliance_gap": 15
+          },
+          "label": "Minimum Disruption",
+          "summary": "Minimizes service disruption to 54.5hrs. Risk exposure: 730. Best for teams with tight maintenance windows."
+        },
+        {
+          "ordering": [
+            "CVE-2024-22019",
+            "CVE-2024-24549",
+            "CVE-2024-24556",
+            "CVE-2024-29041",
+            "CVE-2024-6345",
+            "CVE-2024-24790",
+            "CVE-2024-28849",
+            "CVE-2024-23334",
+            "CVE-2024-22195",
+            "CVE-2024-3651",
+            "CVE-2024-31449",
+            "CVE-2024-27316",
+            "CVE-2024-21538",
+            "CVE-2024-4068",
+            "CVE-2024-4367"
+          ],
+          "scores": {
+            "risk": 729.79,
+            "downtime": 54.55,
+            "cost": 37500,
+            "compliance_gap": 15
+          },
+          "label": "Minimum Disruption",
+          "summary": "Minimizes service disruption to 54.5hrs. Risk exposure: 730. Best for teams with tight maintenance windows."
+        }
+      ]
+    }
+  },
+  "conflicts": {
+    "conflicts": [
+      {
+        "cve_id": "CVE-2024-29041",
+        "type": "shared_dependency",
+        "description": "Express upgrade to 4.19.2 changes body-parser API. Customer Portal's API proxy uses body-parser@1.20.1 which is incompatible with Express 4.19.x",
+        "affected_services": [
+          "Customer Portal"
+        ],
+        "severity": "high"
+      }
+    ],
+    "resolutions": [
+      {
+        "conflict_id": "CVE-2024-29041",
+        "strategy": "coordinated_upgrade",
+        "steps": [
+          "1. Notify teams owning Customer Portal",
+          "2. Stage patches in test environment for both services simultaneously",
+          "3. Run integration tests across affected service boundaries",
+          "4. Deploy coordinated patch during maintenance window"
+        ],
+        "options": [
+          "Upgrade both Payment API and Customer Portal simultaneously",
+          "Use express 4.19.2 with body-parser@1.20.2 compatibility shim"
+        ],
+        "estimated_additional_time_hours": 2,
+        "risk_level": "medium"
+      }
+    ],
+    "ordering_issues": [
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-22019 (position 2) patches Payment API before CVE-2024-24790 (position 8) patches Auth Service, but Payment API depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-22019"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-22019 (position 2) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-22019"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-29041 (position 4) patches Payment API, but Database Layer depends on Payment API",
+        "suggestion": "Consider patching CVE-2024-29041 before CVE-2024-24556"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-6345 (position 7) patches Payment API, but Database Layer depends on Payment API",
+        "suggestion": "Consider patching CVE-2024-6345 before CVE-2024-24556"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-4068 (position 14) patches Payment API, but Database Layer depends on Payment API",
+        "suggestion": "Consider patching CVE-2024-4068 before CVE-2024-24556"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-24790 (position 8) patches Auth Service, but Database Layer depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-24556"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-4367 (position 15) patches Auth Service, but Database Layer depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-24556"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-29041 (position 4) patches Payment API before CVE-2024-24790 (position 8) patches Auth Service, but Payment API depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-29041"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-29041 (position 4) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-29041"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-23334 (position 5) patches Customer Portal before CVE-2024-24790 (position 8) patches Auth Service, but Customer Portal depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-23334"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-23334 (position 5) patches Customer Portal before CVE-2024-4367 (position 15) patches Auth Service, but Customer Portal depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-23334"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-28849 (position 6) patches Customer Portal before CVE-2024-24790 (position 8) patches Auth Service, but Customer Portal depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-28849"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-28849 (position 6) patches Customer Portal before CVE-2024-4367 (position 15) patches Auth Service, but Customer Portal depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-28849"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-6345 (position 7) patches Payment API before CVE-2024-24790 (position 8) patches Auth Service, but Payment API depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-6345"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-6345 (position 7) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-6345"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-22195 (position 9) patches Customer Portal before CVE-2024-4367 (position 15) patches Auth Service, but Customer Portal depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-22195"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-27316 (position 12) patches Database Layer before CVE-2024-4068 (position 14) patches Payment API, but Database Layer depends on Payment API",
+        "suggestion": "Consider patching CVE-2024-4068 before CVE-2024-27316"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-27316 (position 12) patches Database Layer before CVE-2024-4367 (position 15) patches Auth Service, but Database Layer depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-27316"
+      },
+      {
+        "type": "ordering_conflict",
+        "description": "CVE-2024-4068 (position 14) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+        "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-4068"
+      }
+    ]
+  },
+  "remediation_plans": [
+    {
+      "cve_id": "CVE-2024-22019",
+      "service": "Payment API",
+      "severity": "CRITICAL",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Payment API service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade node from 18.19.0 to 18.19.1",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Payment API",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Payment API during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Payment API to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Payment API/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Payment API health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "payment-api/src/server.ts",
+        "payment-api/src/routes/transactions.ts"
+      ],
+      "packages_to_update": [
+        {
+          "name": "node",
+          "current": "18.19.0",
+          "patched": "18.19.1",
+          "lockfile": "payment-api/package-lock.json"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-29041",
+      "service": "Payment API",
+      "severity": "CRITICAL",
+      "is_blocked": true,
+      "conflict_resolution": "coordinated_upgrade",
+      "steps": [
+        {
+          "action": "Resolve dependency conflict",
+          "detail": "1. Notify teams owning Customer Portal",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Payment API service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade express from 4.18.2 to 4.19.2",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Payment API",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Payment API during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.8,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Payment API to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Payment API/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Payment API health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "payment-api/src/app.ts",
+        "payment-api/src/middleware/auth.ts",
+        "payment-api/src/routes/index.ts"
+      ],
+      "packages_to_update": [
+        {
+          "name": "express",
+          "current": "4.18.2",
+          "patched": "4.19.2",
+          "lockfile": "payment-api/package-lock.json"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-24549",
+      "service": "Auth Service",
+      "severity": "CRITICAL",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Auth Service service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade github.com/golang-jwt/jwt/v5 from 5.2.0 to 5.2.1",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Auth Service",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Auth Service during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Auth Service to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Auth Service/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Auth Service health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "auth-service/internal/jwt/validator.go",
+        "auth-service/internal/middleware/auth.go"
+      ],
+      "packages_to_update": [
+        {
+          "name": "github.com/golang-jwt/jwt/v5",
+          "current": "5.2.0",
+          "patched": "5.2.1",
+          "lockfile": "auth-service/go.sum"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-24556",
+      "service": "Database Layer",
+      "severity": "CRITICAL",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Database Layer service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade postgresql from 15.4 to 15.6",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Database Layer",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Database Layer during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Database Layer to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Database Layer/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Database Layer health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "infrastructure/rds/postgresql.conf",
+        "infrastructure/rds/pg_hba.conf"
+      ],
+      "packages_to_update": [
+        {
+          "name": "postgresql",
+          "current": "15.4",
+          "patched": "15.6",
+          "lockfile": null
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-28849",
+      "service": "Customer Portal",
+      "severity": "HIGH",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Customer Portal service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade next from 14.1.0 to 14.1.1",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Customer Portal",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Customer Portal during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Customer Portal to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Customer Portal/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Customer Portal health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": false,
+      "files_to_modify": [
+        "customer-portal/src/app/api/actions.ts",
+        "customer-portal/src/app/api/proxy/route.ts"
+      ],
+      "packages_to_update": [
+        {
+          "name": "next",
+          "current": "14.1.0",
+          "patched": "14.1.1",
+          "lockfile": "customer-portal/package-lock.json"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-23334",
+      "service": "Customer Portal",
+      "severity": "HIGH",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Customer Portal service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade nginx from 1.24.0 to 1.25.4",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Customer Portal",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Customer Portal during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Customer Portal to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Customer Portal/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Customer Portal health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": false,
+      "files_to_modify": [
+        "infrastructure/nginx/nginx.conf",
+        "infrastructure/nginx/sites-enabled/portal.conf"
+      ],
+      "packages_to_update": [
+        {
+          "name": "nginx",
+          "current": "1.24.0",
+          "patched": "1.25.4",
+          "lockfile": null
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-24790",
+      "service": "Auth Service",
+      "severity": "HIGH",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Auth Service service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade go from 1.21.6 to 1.21.11",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Auth Service",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Auth Service during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Auth Service to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Auth Service/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Auth Service health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "auth-service/internal/network/validator.go",
+        "auth-service/cmd/server/main.go"
+      ],
+      "packages_to_update": [
+        {
+          "name": "go",
+          "current": "1.21.6",
+          "patched": "1.21.11",
+          "lockfile": "auth-service/go.mod"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-22195",
+      "service": "Customer Portal",
+      "severity": "HIGH",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Customer Portal service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade react from 18.2.0 to 18.2.1",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Customer Portal",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Customer Portal during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Customer Portal to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Customer Portal/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Customer Portal health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": false,
+      "files_to_modify": [
+        "customer-portal/src/components/NotificationBanner.tsx",
+        "customer-portal/src/components/RichTextDisplay.tsx"
+      ],
+      "packages_to_update": [
+        {
+          "name": "react",
+          "current": "18.2.0",
+          "patched": "18.2.1",
+          "lockfile": "customer-portal/package-lock.json"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-6345",
+      "service": "Payment API",
+      "severity": "HIGH",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Payment API service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade pg from 8.11.3 to 8.11.5",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Payment API",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Payment API during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Payment API to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Payment API/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Payment API health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "payment-api/src/db/pool.ts",
+        "payment-api/src/db/connection.ts"
+      ],
+      "packages_to_update": [
+        {
+          "name": "pg",
+          "current": "8.11.3",
+          "patched": "8.11.5",
+          "lockfile": "payment-api/package-lock.json"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-3651",
+      "service": "Internal Dashboard",
+      "severity": "MEDIUM",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Internal Dashboard service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade flask from 2.3.3 to 3.0.1",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Internal Dashboard",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Internal Dashboard during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Internal Dashboard to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Internal Dashboard/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Internal Dashboard health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": false,
+      "files_to_modify": [
+        "internal-dashboard/app.py",
+        "internal-dashboard/config.py"
+      ],
+      "packages_to_update": [
+        {
+          "name": "flask",
+          "current": "2.3.3",
+          "patched": "3.0.1",
+          "lockfile": "internal-dashboard/requirements.txt"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-31449",
+      "service": "Internal Dashboard",
+      "severity": "MEDIUM",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Internal Dashboard service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade redis from 7.0.12 to 7.0.15",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Internal Dashboard",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Internal Dashboard during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Internal Dashboard to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Internal Dashboard/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Internal Dashboard health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": false,
+      "files_to_modify": [
+        "internal-dashboard/cache.py",
+        "internal-dashboard/views/analytics.py"
+      ],
+      "packages_to_update": [
+        {
+          "name": "redis",
+          "current": "7.0.12",
+          "patched": "7.0.15",
+          "lockfile": null
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-27316",
+      "service": "Database Layer",
+      "severity": "MEDIUM",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Database Layer service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade pgbouncer from 1.21.0 to 1.22.1",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Database Layer",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Database Layer during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Database Layer to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Database Layer/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Database Layer health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "infrastructure/pgbouncer/pgbouncer.ini"
+      ],
+      "packages_to_update": [
+        {
+          "name": "pgbouncer",
+          "current": "1.21.0",
+          "patched": "1.22.1",
+          "lockfile": null
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-21538",
+      "service": "Internal Dashboard",
+      "severity": "MEDIUM",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Internal Dashboard service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade jinja2 from 3.1.2 to 3.1.4",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Internal Dashboard",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Internal Dashboard during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Internal Dashboard to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Internal Dashboard/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Internal Dashboard health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": false,
+      "files_to_modify": [
+        "internal-dashboard/templates/custom_report.html",
+        "internal-dashboard/views/reports.py"
+      ],
+      "packages_to_update": [
+        {
+          "name": "jinja2",
+          "current": "3.1.2",
+          "patched": "3.1.4",
+          "lockfile": "internal-dashboard/requirements.txt"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-4068",
+      "service": "Payment API",
+      "severity": "LOW",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Payment API service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade winston from 3.11.0 to 3.13.0",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Payment API",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Payment API during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Payment API to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Payment API/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Payment API health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "payment-api/src/utils/logger.ts"
+      ],
+      "packages_to_update": [
+        {
+          "name": "winston",
+          "current": "3.11.0",
+          "patched": "3.13.0",
+          "lockfile": "payment-api/package-lock.json"
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    },
+    {
+      "cve_id": "CVE-2024-4367",
+      "service": "Auth Service",
+      "severity": "LOW",
+      "is_blocked": false,
+      "conflict_resolution": null,
+      "steps": [
+        {
+          "action": "Create backup and snapshot",
+          "detail": "Snapshot Auth Service service state and database (if applicable)",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Update dependency",
+          "detail": "Upgrade vault from 1.15.0 to 1.15.6",
+          "estimated_minutes": 10
+        },
+        {
+          "action": "Run unit tests",
+          "detail": "Execute test suite for Auth Service",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Run integration tests",
+          "detail": "Verify service-to-service communication after patch",
+          "estimated_minutes": 30
+        },
+        {
+          "action": "Deploy to staging",
+          "detail": "Deploy patched version to staging environment and verify",
+          "estimated_minutes": 15
+        },
+        {
+          "action": "Deploy to production",
+          "detail": "Rolling deploy to Auth Service during maintenance window",
+          "estimated_minutes": 20
+        },
+        {
+          "action": "Post-deploy verification",
+          "detail": "Monitor error rates, latency, and functionality for 30 minutes",
+          "estimated_minutes": 30
+        }
+      ],
+      "estimated_hours": 2.3,
+      "rollback_procedure": {
+        "trigger": "Error rate exceeds 1% or latency exceeds 2x baseline within 30 minutes of deploy",
+        "steps": [
+          "Revert Auth Service to previous version via blue-green switch",
+          "Restore database snapshot if schema changes were made",
+          "Notify on-call team and create incident ticket",
+          "Schedule retry for next maintenance window"
+        ],
+        "estimated_rollback_minutes": 15
+      },
+      "testing_requirements": {
+        "unit_tests": "Auth Service/tests/",
+        "integration_tests": "Run full service mesh integration suite",
+        "smoke_tests": [
+          "Verify Auth Service health endpoint returns 200",
+          "Verify authentication flow works end-to-end",
+          "Verify core business operations (transactions, logins, queries)"
+        ]
+      },
+      "requires_pci_review": true,
+      "files_to_modify": [
+        "auth-service/internal/vault/client.go",
+        "auth-service/config/vault.hcl"
+      ],
+      "packages_to_update": [
+        {
+          "name": "vault",
+          "current": "1.15.0",
+          "patched": "1.15.6",
+          "lockfile": null
+        }
+      ],
+      "verified": true,
+      "verification_issues": []
+    }
+  ],
+  "compliance": {
+    "compliance_flags": [
+      {
+        "cve_id": "CVE-2024-22019",
+        "service": "Payment API",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Payment API is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-22019",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-29041",
+        "service": "Payment API",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Payment API is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-29041",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-24549",
+        "service": "Auth Service",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Auth Service is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-24549",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-24556",
+        "service": "Database Layer",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Database Layer is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-24556",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-28849",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-23334",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-24790",
+        "service": "Auth Service",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Auth Service is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-24790",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-22195",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-6345",
+        "service": "Payment API",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Payment API is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-6345",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-3651",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-31449",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-27316",
+        "service": "Database Layer",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Database Layer is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-27316",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-21538",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-4068",
+        "service": "Payment API",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Payment API is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-4068",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      },
+      {
+        "cve_id": "CVE-2024-4367",
+        "service": "Auth Service",
+        "framework": "PCI-DSS",
+        "flag_type": "pci_scope_change",
+        "description": "Patch to Auth Service is in PCI-DSS scope. Requires additional review and documentation.",
+        "required_actions": [
+          "Document change in PCI change log",
+          "Obtain approval from two authorized reviewers",
+          "Update PCI evidence repository after deployment",
+          "Schedule post-patch PCI scan within 72 hours"
+        ],
+        "additional_review_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-4367",
+        "flag_type": "change_freeze_warning",
+        "description": "Change freeze dates approaching: 2024-04-15, 2024-04-30. Ensure patch is deployed before freeze.",
+        "freeze_dates": [
+          "2024-04-15",
+          "2024-04-30"
+        ]
+      }
+    ],
+    "escalations": [
+      {
+        "cve_id": "CVE-2024-22019",
+        "service": "Payment API",
+        "reason": "Critical/High severity vulnerability in PCI-scoped service Payment API",
+        "recommended_priority": "immediate",
+        "regulatory_deadline": "2024-04-30"
+      },
+      {
+        "cve_id": "CVE-2024-29041",
+        "service": "Payment API",
+        "reason": "Critical/High severity vulnerability in PCI-scoped service Payment API",
+        "recommended_priority": "immediate",
+        "regulatory_deadline": "2024-04-30"
+      },
+      {
+        "cve_id": "CVE-2024-24549",
+        "service": "Auth Service",
+        "reason": "Critical/High severity vulnerability in PCI-scoped service Auth Service",
+        "recommended_priority": "immediate",
+        "regulatory_deadline": "2024-04-30"
+      },
+      {
+        "cve_id": "CVE-2024-24556",
+        "service": "Database Layer",
+        "reason": "Critical/High severity vulnerability in PCI-scoped service Database Layer",
+        "recommended_priority": "immediate",
+        "regulatory_deadline": "2024-04-30"
+      },
+      {
+        "cve_id": "CVE-2024-24790",
+        "service": "Auth Service",
+        "reason": "Critical/High severity vulnerability in PCI-scoped service Auth Service",
+        "recommended_priority": "immediate",
+        "regulatory_deadline": "2024-04-30"
+      },
+      {
+        "cve_id": "CVE-2024-6345",
+        "service": "Payment API",
+        "reason": "Critical/High severity vulnerability in PCI-scoped service Payment API",
+        "recommended_priority": "immediate",
+        "regulatory_deadline": "2024-04-30"
+      }
+    ],
+    "reviews_required": [
+      {
+        "cve_id": "CVE-2024-22019",
+        "service": "Payment API",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-29041",
+        "service": "Payment API",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-24549",
+        "service": "Auth Service",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-24556",
+        "service": "Database Layer",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-24790",
+        "service": "Auth Service",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-6345",
+        "service": "Payment API",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-27316",
+        "service": "Database Layer",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-4068",
+        "service": "Payment API",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      },
+      {
+        "cve_id": "CVE-2024-4367",
+        "service": "Auth Service",
+        "review_type": "PCI-DSS Change Review",
+        "reviewers_needed": 2,
+        "estimated_hours": 2
+      }
+    ],
+    "total_additional_review_hours": 18
+  },
+  "risk_assessment": {
+    "risk_steps": [
+      {
+        "position": 1,
+        "cve_id": "CVE-2024-24549",
+        "severity": "CRITICAL",
+        "service": "Auth Service",
+        "risk_removed": 9.4,
+        "residual_risk": 96.33,
+        "residual_cvss": 95.5,
+        "cumulative_reduction_pct": 8.9,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 2,
+        "cve_id": "CVE-2024-22019",
+        "severity": "CRITICAL",
+        "service": "Payment API",
+        "risk_removed": 9.8,
+        "residual_risk": 86.53,
+        "residual_cvss": 85.7,
+        "cumulative_reduction_pct": 18.2,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 3,
+        "cve_id": "CVE-2024-24556",
+        "severity": "CRITICAL",
+        "service": "Database Layer",
+        "risk_removed": 9.38,
+        "residual_risk": 77.15,
+        "residual_cvss": 76.7,
+        "cumulative_reduction_pct": 27.0,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 4,
+        "cve_id": "CVE-2024-29041",
+        "severity": "CRITICAL",
+        "service": "Payment API",
+        "risk_removed": 9.1,
+        "residual_risk": 68.05,
+        "residual_cvss": 67.6,
+        "cumulative_reduction_pct": 35.6,
+        "estimated_hours": 2.8
+      },
+      {
+        "position": 5,
+        "cve_id": "CVE-2024-23334",
+        "severity": "HIGH",
+        "service": "Customer Portal",
+        "risk_removed": 7.8,
+        "residual_risk": 60.25,
+        "residual_cvss": 59.8,
+        "cumulative_reduction_pct": 43.0,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 6,
+        "cve_id": "CVE-2024-28849",
+        "severity": "HIGH",
+        "service": "Customer Portal",
+        "risk_removed": 7.5,
+        "residual_risk": 52.75,
+        "residual_cvss": 52.3,
+        "cumulative_reduction_pct": 50.1,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 7,
+        "cve_id": "CVE-2024-6345",
+        "severity": "HIGH",
+        "service": "Payment API",
+        "risk_removed": 7.0,
+        "residual_risk": 45.75,
+        "residual_cvss": 45.3,
+        "cumulative_reduction_pct": 56.7,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 8,
+        "cve_id": "CVE-2024-24790",
+        "severity": "HIGH",
+        "service": "Auth Service",
+        "risk_removed": 7.3,
+        "residual_risk": 38.45,
+        "residual_cvss": 38.0,
+        "cumulative_reduction_pct": 63.6,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 9,
+        "cve_id": "CVE-2024-22195",
+        "severity": "HIGH",
+        "service": "Customer Portal",
+        "risk_removed": 7.1,
+        "residual_risk": 31.35,
+        "residual_cvss": 30.9,
+        "cumulative_reduction_pct": 70.3,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 10,
+        "cve_id": "CVE-2024-31449",
+        "severity": "MEDIUM",
+        "service": "Internal Dashboard",
+        "risk_removed": 6.27,
+        "residual_risk": 25.08,
+        "residual_cvss": 24.7,
+        "cumulative_reduction_pct": 76.3,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 11,
+        "cve_id": "CVE-2024-3651",
+        "severity": "MEDIUM",
+        "service": "Internal Dashboard",
+        "risk_removed": 6.57,
+        "residual_risk": 18.51,
+        "residual_cvss": 18.2,
+        "cumulative_reduction_pct": 82.5,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 12,
+        "cve_id": "CVE-2024-27316",
+        "severity": "MEDIUM",
+        "service": "Database Layer",
+        "risk_removed": 6.15,
+        "residual_risk": 12.36,
+        "residual_cvss": 12.3,
+        "cumulative_reduction_pct": 88.3,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 13,
+        "cve_id": "CVE-2024-21538",
+        "severity": "MEDIUM",
+        "service": "Internal Dashboard",
+        "risk_removed": 5.56,
+        "residual_risk": 6.8,
+        "residual_cvss": 6.8,
+        "cumulative_reduction_pct": 93.6,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 14,
+        "cve_id": "CVE-2024-4068",
+        "severity": "LOW",
+        "service": "Payment API",
+        "risk_removed": 3.7,
+        "residual_risk": 3.1,
+        "residual_cvss": 3.1,
+        "cumulative_reduction_pct": 97.1,
+        "estimated_hours": 2.3
+      },
+      {
+        "position": 15,
+        "cve_id": "CVE-2024-4367",
+        "severity": "LOW",
+        "service": "Auth Service",
+        "risk_removed": 3.1,
+        "residual_risk": 0.0,
+        "residual_cvss": 0.0,
+        "cumulative_reduction_pct": 100.0,
+        "estimated_hours": 2.3
+      }
+    ],
+    "summary": {
+      "total_risk_before": 105.73,
+      "total_risk_after": 0,
+      "total_cvss_before": 104.9,
+      "total_cvss_after": 0,
+      "risk_reduction_pct": 100.0,
+      "total_vulnerabilities": 15,
+      "critical_count": 4,
+      "high_count": 5,
+      "medium_count": 4,
+      "low_count": 2,
+      "monte_carlo_improvement": -0.1
+    },
+    "milestones": {
+      "25pct_reduction_at_step": 3,
+      "25pct_reduction_cve": "CVE-2024-24556",
+      "50pct_reduction_at_step": 6,
+      "50pct_reduction_cve": "CVE-2024-28849",
+      "75pct_reduction_at_step": 10,
+      "75pct_reduction_cve": "CVE-2024-31449",
+      "90pct_reduction_at_step": 13,
+      "90pct_reduction_cve": "CVE-2024-21538"
+    }
+  },
+  "agent_log": [
+    {
+      "id": "55f633e6",
+      "from": "scanner_agent",
+      "to": "orchestrator",
+      "type": "INFORM",
+      "priority": "high",
+      "payload": {
+        "summary": "Dependency conflict detected for CVE-2024-29041",
+        "reason": "Express upgrade to 4.19.2 changes body-parser API. Customer Portal's API proxy uses body-parser@1.20.1 which is incompatible with Express 4.19.x",
+        "cve_id": "CVE-2024-29041",
+        "conflict": {
+          "type": "shared_dependency",
+          "description": "Express upgrade to 4.19.2 changes body-parser API. Customer Portal's API proxy uses body-parser@1.20.1 which is incompatible with Express 4.19.x",
+          "affected_services": [
+            "Customer Portal"
+          ],
+          "resolution_options": [
+            "Upgrade both Payment API and Customer Portal simultaneously",
+            "Use express 4.19.2 with body-parser@1.20.2 compatibility shim"
+          ]
+        }
+      },
+      "timestamp": 1775781747.6030269
+    },
+    {
+      "id": "7ff12ed7",
+      "from": "scanner_agent",
+      "to": "orchestrator",
+      "type": "INFORM",
+      "priority": "normal",
+      "payload": {
+        "summary": "Scan complete: 15 vulnerabilities found",
+        "total_findings": 15,
+        "by_severity": {
+          "CRITICAL": 4,
+          "HIGH": 5,
+          "MEDIUM": 4,
+          "LOW": 2
+        },
+        "conflicts_found": 1
+      },
+      "timestamp": 1775781747.603071
+    },
+    {
+      "id": "97880412",
+      "from": "dependency_agent",
+      "to": "remediation_agent",
+      "type": "BLOCK",
+      "priority": "critical",
+      "payload": {
+        "blocking_cve": "CVE-2024-29041",
+        "reason": "Express upgrade to 4.19.2 changes body-parser API. Customer Portal's API proxy uses body-parser@1.20.1 which is incompatible with Express 4.19.x",
+        "suggestion": "Upgrade both Payment API and Customer Portal simultaneously",
+        "affected_services": [
+          "Customer Portal"
+        ]
+      },
+      "timestamp": 1775781747.7818089
+    },
+    {
+      "id": "fb6b56df",
+      "from": "dependency_agent",
+      "to": "orchestrator",
+      "type": "INFORM",
+      "priority": "normal",
+      "payload": {
+        "summary": "Found 19 ordering recommendations",
+        "reason": "Some patches may benefit from reordering based on service dependencies",
+        "issues": [
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-22019 (position 2) patches Payment API before CVE-2024-24790 (position 8) patches Auth Service, but Payment API depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-22019"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-22019 (position 2) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-22019"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-29041 (position 4) patches Payment API, but Database Layer depends on Payment API",
+            "suggestion": "Consider patching CVE-2024-29041 before CVE-2024-24556"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-6345 (position 7) patches Payment API, but Database Layer depends on Payment API",
+            "suggestion": "Consider patching CVE-2024-6345 before CVE-2024-24556"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-4068 (position 14) patches Payment API, but Database Layer depends on Payment API",
+            "suggestion": "Consider patching CVE-2024-4068 before CVE-2024-24556"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-24790 (position 8) patches Auth Service, but Database Layer depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-24556"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-24556 (position 3) patches Database Layer before CVE-2024-4367 (position 15) patches Auth Service, but Database Layer depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-24556"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-29041 (position 4) patches Payment API before CVE-2024-24790 (position 8) patches Auth Service, but Payment API depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-29041"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-29041 (position 4) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-29041"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-23334 (position 5) patches Customer Portal before CVE-2024-24790 (position 8) patches Auth Service, but Customer Portal depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-23334"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-23334 (position 5) patches Customer Portal before CVE-2024-4367 (position 15) patches Auth Service, but Customer Portal depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-23334"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-28849 (position 6) patches Customer Portal before CVE-2024-24790 (position 8) patches Auth Service, but Customer Portal depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-28849"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-28849 (position 6) patches Customer Portal before CVE-2024-4367 (position 15) patches Auth Service, but Customer Portal depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-28849"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-6345 (position 7) patches Payment API before CVE-2024-24790 (position 8) patches Auth Service, but Payment API depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-24790 before CVE-2024-6345"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-6345 (position 7) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-6345"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-22195 (position 9) patches Customer Portal before CVE-2024-4367 (position 15) patches Auth Service, but Customer Portal depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-22195"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-27316 (position 12) patches Database Layer before CVE-2024-4068 (position 14) patches Payment API, but Database Layer depends on Payment API",
+            "suggestion": "Consider patching CVE-2024-4068 before CVE-2024-27316"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-27316 (position 12) patches Database Layer before CVE-2024-4367 (position 15) patches Auth Service, but Database Layer depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-27316"
+          },
+          {
+            "type": "ordering_conflict",
+            "description": "CVE-2024-4068 (position 14) patches Payment API before CVE-2024-4367 (position 15) patches Auth Service, but Payment API depends on Auth Service",
+            "suggestion": "Consider patching CVE-2024-4367 before CVE-2024-4068"
+          }
+        ]
+      },
+      "timestamp": 1775781747.7819462
+    },
+    {
+      "id": "d25e23db",
+      "from": "dependency_agent",
+      "to": "orchestrator",
+      "type": "INFORM",
+      "priority": "normal",
+      "payload": {
+        "summary": "Dependency analysis complete: 1 conflicts found",
+        "conflicts_count": 1,
+        "resolutions_count": 1,
+        "ordering_issues": 19
+      },
+      "timestamp": 1775781747.781955
+    },
+    {
+      "id": "857919eb",
+      "from": "remediation_agent",
+      "to": "orchestrator",
+      "type": "RESOLVE",
+      "priority": "high",
+      "payload": {
+        "resolved_cve": "CVE-2024-29041",
+        "resolution_strategy": "coordinated_upgrade",
+        "steps": [
+          "1. Notify teams owning Customer Portal",
+          "2. Stage patches in test environment for both services simultaneously",
+          "3. Run integration tests across affected service boundaries",
+          "4. Deploy coordinated patch during maintenance window"
+        ],
+        "reason": "Conflict for CVE-2024-29041 resolved via coordinated_upgrade"
+      },
+      "timestamp": 1775781747.782026
+    },
+    {
+      "id": "c4bf1580",
+      "from": "remediation_agent",
+      "to": "orchestrator",
+      "type": "INFORM",
+      "priority": "normal",
+      "payload": {
+        "summary": "Generated 15 remediation plans (1 with conflict resolutions)",
+        "total_plans": 15,
+        "blocked_count": 1,
+        "total_estimated_hours": 35.0
+      },
+      "timestamp": 1775781747.7820349
+    },
+    {
+      "id": "3bb26871",
+      "from": "compliance_agent",
+      "to": "orchestrator",
+      "type": "ESCALATE",
+      "priority": "critical",
+      "payload": {
+        "cve_id": "CVE-2024-22019",
+        "reason": "CRITICAL vulnerability in PCI-scoped Payment API \u2014 regulatory deadline 2024-04-30",
+        "recommended_action": "Prioritize this patch in the next maintenance window",
+        "compliance_framework": "PCI-DSS"
+      },
+      "timestamp": 1775781747.782047
+    },
+    {
+      "id": "1244a00a",
+      "from": "compliance_agent",
+      "to": "orchestrator",
+      "type": "ESCALATE",
+      "priority": "critical",
+      "payload": {
+        "cve_id": "CVE-2024-29041",
+        "reason": "CRITICAL vulnerability in PCI-scoped Payment API \u2014 regulatory deadline 2024-04-30",
+        "recommended_action": "Prioritize this patch in the next maintenance window",
+        "compliance_framework": "PCI-DSS"
+      },
+      "timestamp": 1775781747.782057
+    },
+    {
+      "id": "0b26dc14",
+      "from": "compliance_agent",
+      "to": "orchestrator",
+      "type": "ESCALATE",
+      "priority": "critical",
+      "payload": {
+        "cve_id": "CVE-2024-24549",
+        "reason": "CRITICAL vulnerability in PCI-scoped Auth Service \u2014 regulatory deadline 2024-04-30",
+        "recommended_action": "Prioritize this patch in the next maintenance window",
+        "compliance_framework": "PCI-DSS"
+      },
+      "timestamp": 1775781747.782065
+    },
+    {
+      "id": "5ef8057d",
+      "from": "compliance_agent",
+      "to": "orchestrator",
+      "type": "ESCALATE",
+      "priority": "critical",
+      "payload": {
+        "cve_id": "CVE-2024-24556",
+        "reason": "CRITICAL vulnerability in PCI-scoped Database Layer \u2014 regulatory deadline 2024-04-30",
+        "recommended_action": "Prioritize this patch in the next maintenance window",
+        "compliance_framework": "PCI-DSS"
+      },
+      "timestamp": 1775781747.782072
+    },
+    {
+      "id": "092a5bed",
+      "from": "compliance_agent",
+      "to": "orchestrator",
+      "type": "ESCALATE",
+      "priority": "critical",
+      "payload": {
+        "cve_id": "CVE-2024-24790",
+        "reason": "HIGH vulnerability in PCI-scoped Auth Service \u2014 regulatory deadline 2024-04-30",
+        "recommended_action": "Prioritize this patch in the next maintenance window",
+        "compliance_framework": "PCI-DSS"
+      },
+      "timestamp": 1775781747.78208
+    },
+    {
+      "id": "88910ca2",
+      "from": "compliance_agent",
+      "to": "orchestrator",
+      "type": "ESCALATE",
+      "priority": "critical",
+      "payload": {
+        "cve_id": "CVE-2024-6345",
+        "reason": "HIGH vulnerability in PCI-scoped Payment API \u2014 regulatory deadline 2024-04-30",
+        "recommended_action": "Prioritize this patch in the next maintenance window",
+        "compliance_framework": "PCI-DSS"
+      },
+      "timestamp": 1775781747.782086
+    },
+    {
+      "id": "fbce7628",
+      "from": "compliance_agent",
+      "to": "orchestrator",
+      "type": "INFORM",
+      "priority": "normal",
+      "payload": {
+        "summary": "Compliance review: 6 patches escalated for regulatory priority",
+        "total_flags": 24,
+        "escalations": 6,
+        "additional_review_hours": 18,
+        "pci_affected_patches": 9
+      },
+      "timestamp": 1775781747.782101
+    },
+    {
+      "id": "abf7374f",
+      "from": "risk_agent",
+      "to": "orchestrator",
+      "type": "INFORM",
+      "priority": "normal",
+      "payload": {
+        "summary": "Full remediation reduces risk from 106 to 0. First 5 patches eliminate 43.0% of risk.",
+        "total_risk_before": 105.73,
+        "monte_carlo_improvement": -0.1,
+        "milestones": {
+          "25pct_reduction_at_step": 3,
+          "25pct_reduction_cve": "CVE-2024-24556",
+          "50pct_reduction_at_step": 6,
+          "50pct_reduction_cve": "CVE-2024-28849",
+          "75pct_reduction_at_step": 10,
+          "75pct_reduction_cve": "CVE-2024-31449",
+          "90pct_reduction_at_step": 13,
+          "90pct_reduction_cve": "CVE-2024-21538"
+        }
+      },
+      "timestamp": 1775781747.782161
+    }
+  ],
+  "executive_summary": {
+    "total_vulnerabilities": 15,
+    "critical": 4,
+    "high": 5,
+    "medium": 4,
+    "low": 2,
+    "risk_before": 105.73,
+    "risk_after": 0,
+    "risk_reduction_pct": 100,
+    "monte_carlo_improvement": -0.1,
+    "conflicts_detected": 1,
+    "conflicts_resolved": 1,
+    "compliance_escalations": 6,
+    "total_remediation_hours": 35.0,
+    "pareto_profiles_available": 4
+  }
+}
