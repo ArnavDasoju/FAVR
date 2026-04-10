@@ -1,4 +1,4 @@
-import { useState, Component, type ReactNode } from 'react'
+import { useState, useEffect, Component, type ReactNode } from 'react'
 import Sidebar, { type View } from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import FlowsView from './components/FlowsView'
@@ -44,9 +44,32 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, { error: stri
   }
 }
 
+const VIEW_KEYS: Record<string, View> = {
+  '1': 'dashboard',
+  '2': 'vulnerabilities',
+  '3': 'analysis',
+  '4': 'comparison',
+  '5': 'schedule',
+  '6': 'whatif',
+  '7': 'settings',
+}
+
 export default function App() {
   useIpcListeners()
   const [activeView, setActiveView] = useState<View>('dashboard')
+
+  // Keyboard shortcuts: 1-7 to switch views
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      // Don't trigger when typing in inputs
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const view = VIEW_KEYS[e.key]
+      if (view) setActiveView(view)
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
 
   const renderView = () => {
     switch (activeView) {

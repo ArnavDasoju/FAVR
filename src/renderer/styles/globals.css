@@ -181,6 +181,13 @@ html, body, #root {
   transform: scale(0.98);
 }
 
+/* ── Focus ring for accessibility ─────────────────────── */
+
+.focus-ring:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 2px;
+}
+
 /* ── Shared input style ────────────────────────────────── */
 
 .input-field {

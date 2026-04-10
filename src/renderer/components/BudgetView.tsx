@@ -8,13 +8,16 @@ export default function BudgetView() {
 
   if (!result) {
     return (
-      <div className="h-full flex flex-col px-6 pb-6 overflow-y-auto">
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-white mb-1">Risk Analysis</h1>
-          <p className="text-sm text-surface-500">Run an analysis to see detailed risk metrics</p>
-        </div>
-        <div className="bg-surface-900 border border-surface-800 border-dashed rounded-card p-12 text-center">
-          <p className="text-sm text-surface-500">No analysis results yet. Go to Dashboard to run an analysis.</p>
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 rounded-2xl bg-surface-900 border border-surface-800 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-surface-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-white mb-1">No Risk Analysis Yet</h2>
+          <p className="text-sm text-surface-500 leading-relaxed">Run an analysis from the Dashboard to see Bayesian risk propagation, Monte Carlo simulation, and Pareto optimization results.</p>
+          <p className="text-[10px] text-surface-600 mt-3 font-mono">Press 1 to go to Dashboard</p>
         </div>
       </div>
     )
