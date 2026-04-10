@@ -52,10 +52,10 @@ export default function Stats() {
       </div>
 
       {/* Key insight */}
-      <div className="bg-surface-900 border border-surface-800 rounded-card p-5 mb-6">
+      <div className="bg-surface-900 border border-surface-800 rounded-card p-5 mb-6 animate-slideUp stagger-1">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
-            <span className="text-2xl font-black text-green-400">{maxSaving.toFixed(1)}%</span>
+          <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center shrink-0 animate-pulseGlow">
+            <span className="text-2xl font-black text-green-400 animate-numberGlow">{maxSaving.toFixed(1)}%</span>
           </div>
           <div>
             <div className="text-sm font-bold text-white mb-1">Maximum Risk Reduction Advantage</div>
@@ -69,12 +69,12 @@ export default function Stats() {
       </div>
 
       {/* Before/After Bar Chart */}
-      <div className="mb-6">
+      <div className="mb-6 animate-slideUp stagger-2">
         <BeforeAfterBar />
       </div>
 
       {/* Side-by-side ordering */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-6 animate-slideUp stagger-3">
         {/* FAVR Optimal */}
         <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
           <div className="flex items-center gap-2 mb-3">

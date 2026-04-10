@@ -45,8 +45,8 @@ export default function BudgetView() {
           { label: 'Reduction', value: `-${riskReduction}%`, color: 'text-green-400' },
           { label: 'Total Patch Cost', value: `${totalPatchCost}h`, color: 'text-amber-400' },
           { label: 'Total Downtime', value: `${totalDowntime}m`, color: 'text-blue-400' },
-        ].map(stat => (
-          <div key={stat.label} className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+        ].map((stat, i) => (
+          <div key={stat.label} className={`bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-${i + 1}`}>
             <div className={`text-2xl font-black ${stat.color}`}>{stat.value}</div>
             <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">{stat.label}</div>
           </div>
@@ -54,14 +54,14 @@ export default function BudgetView() {
       </div>
 
       {/* Risk Reduction Curve */}
-      <div className="mb-6">
+      <div className="mb-6 animate-slideUp stagger-6">
         <RiskReductionCurve />
       </div>
 
       {/* Pareto + Donut side by side */}
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <ParetoFrontier />
-        <SeverityDonut />
+        <div className="animate-slideUp stagger-7"><ParetoFrontier /></div>
+        <div className="animate-slideUp stagger-8"><SeverityDonut /></div>
       </div>
 
       {/* Detailed Risk Scores */}
@@ -78,7 +78,7 @@ export default function BudgetView() {
               ).length
 
               return (
-                <div key={service.id} className="flex items-center gap-4 bg-surface-800/30 rounded-btn p-3">
+                <div key={service.id} className="flex items-center gap-4 bg-surface-800/30 rounded-btn p-3 transition-all duration-150 hover:bg-surface-800/60 hover:translate-x-0.5">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-bold text-white">{service.name}</span>

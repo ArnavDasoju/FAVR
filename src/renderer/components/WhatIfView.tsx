@@ -81,7 +81,7 @@ export default function WhatIfView() {
         <button
           onClick={runWhatIf}
           disabled={loading}
-          className="px-5 py-2.5 bg-white text-black text-sm font-bold rounded-btn hover:bg-surface-200 transition-colors uppercase tracking-wide disabled:opacity-50"
+          className="px-5 py-2.5 bg-white text-black text-sm font-bold rounded-btn hover:bg-surface-200 transition-all uppercase tracking-wide disabled:opacity-50 btn-hover"
         >
           {loading ? 'Computing...' : 'Run Scenario'}
         </button>
@@ -91,7 +91,7 @@ export default function WhatIfView() {
         {/* Left: Controls */}
         <div className="col-span-1 flex flex-col gap-4">
           {/* Budget constraint */}
-          <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+          <div className="bg-surface-900 border border-surface-800 rounded-card p-4 animate-slideUp stagger-1">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-white">Budget Constraint</span>
               <button
@@ -124,7 +124,7 @@ export default function WhatIfView() {
           </div>
 
           {/* Downtime constraint */}
-          <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+          <div className="bg-surface-900 border border-surface-800 rounded-card p-4 animate-slideUp stagger-2">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-white">Downtime Constraint</span>
               <button
@@ -157,7 +157,7 @@ export default function WhatIfView() {
           </div>
 
           {/* Skip services */}
-          <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+          <div className="bg-surface-900 border border-surface-800 rounded-card p-4 animate-slideUp stagger-3">
             <div className="text-xs font-bold text-white mb-3">Skip Services</div>
             <div className="flex flex-col gap-2">
               {result.graph.services.map(service => {
@@ -199,24 +199,24 @@ export default function WhatIfView() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 animate-fadeIn">
               {/* Result stats */}
               <div className="grid grid-cols-4 gap-3">
-                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-1">
                   <div className={`text-2xl font-black ${whatIfResult.residualRisk > 0.5 ? 'text-red-400' : whatIfResult.residualRisk > 0.2 ? 'text-amber-400' : 'text-green-400'}`}>
                     {Math.round(whatIfResult.residualRisk * 100)}%
                   </div>
                   <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Residual Risk</div>
                 </div>
-                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-2">
                   <div className="text-2xl font-black text-green-400">{whatIfResult.patchableVulns.length}</div>
                   <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Can Patch</div>
                 </div>
-                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-3">
                   <div className="text-2xl font-black text-red-400">{whatIfResult.skippedVulns.length}</div>
                   <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Must Skip</div>
                 </div>
-                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center">
+                <div className="bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-4">
                   <div className="text-2xl font-black text-amber-400">{whatIfResult.totalCost}h</div>
                   <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">Cost</div>
                 </div>

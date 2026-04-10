@@ -55,14 +55,48 @@ html, body, #root {
   word-break: break-all;
 }
 
+/* ── Animations ────────────────────────────────────────── */
+
+/* Fade in from transparent */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Slide up from below + fade */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scale in from slightly smaller */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Glow pulse for critical indicators */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.25); }
+}
+
+/* Number glow for key metrics */
+@keyframes numberGlow {
+  0%, 100% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 16px currentColor; }
+}
+
+/* Shimmer for loading skeletons */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 /* Progress bar animation */
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
-}
-
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s ease-in-out infinite;
 }
 
 /* Status dot */
@@ -71,11 +105,84 @@ html, body, #root {
   50% { opacity: 0.3; }
 }
 
+/* ── Animation utility classes ─────────────────────────── */
+
+.animate-fadeIn {
+  animation: fadeIn 300ms ease-out both;
+}
+
+.animate-slideUp {
+  animation: slideUp 350ms ease-out both;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 250ms ease-out both;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
 .status-blink {
   animation: blink 1.5s ease-in-out infinite;
 }
 
-/* Shared input style */
+.animate-pulseGlow {
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+.animate-numberGlow {
+  animation: numberGlow 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #18181B 25%, #27272A 50%, #18181B 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Stagger delay utilities (use with animate-slideUp or animate-fadeIn) */
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 180ms; }
+.stagger-5 { animation-delay: 240ms; }
+.stagger-6 { animation-delay: 300ms; }
+.stagger-7 { animation-delay: 360ms; }
+.stagger-8 { animation-delay: 420ms; }
+
+/* ── View transition ───────────────────────────────────── */
+
+.view-enter {
+  animation: fadeIn 200ms ease-out;
+}
+
+/* ── Hover micro-interactions ──────────────────────────── */
+
+.card-hover {
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+}
+
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border-color: #52525B;
+}
+
+.btn-hover {
+  transition: transform 100ms ease-out, background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.btn-hover:hover {
+  transform: scale(1.02);
+}
+
+.btn-hover:active {
+  transform: scale(0.98);
+}
+
+/* ── Shared input style ────────────────────────────────── */
+
 .input-field {
   @apply bg-surface-950 border border-surface-800 rounded-input px-3 py-2.5
     text-sm text-white placeholder:text-surface-600
