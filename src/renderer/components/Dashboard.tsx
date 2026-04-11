@@ -1,9 +1,28 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAnalysisStore } from '../stores/analysisStore'
+import { useAgentStore } from '../stores/agentStore'
 import DependencyGraph from './charts/DependencyGraph'
 import ServiceHeatmap from './charts/ServiceHeatmap'
 import SeverityDonut from './charts/SeverityDonut'
 import type { AnalysisPhase } from '../../shared/types'
+
+// ─── Fix-All session types ──────────────────────────────────
+type FixPhase = 'idle' | 'patching' | 'done'
+
+interface FixVulnRow {
+  index: number
+  cveId: string
+  title: string
+  affectedPackage: string
+  patchedVersion: string
+  severity: string
+  complexity: 'low' | 'medium' | 'high'
+  model: string
+  status: 'pending' | 'running' | 'done' | 'failed'
+  agentId: string | null
+  changedFiles: string[]
+  error: string | null
+}
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'text-red-400 bg-red-500/10 border-red-500/30',
@@ -475,6 +494,7 @@ export default function Dashboard() {
       urgentCompliance={urgentCompliance}
       maxScheduleWeek={maxScheduleWeek}
       scanStats={scanStats}
+      codebasePath={codebasePath}
       animate={!hasSeenResults}
     />
   )
@@ -510,7 +530,7 @@ function RiskGauge({ value, size = 100, strokeWidth = 8, animate: shouldAnimate 
 }
 
 // ─── Results Dashboard (extracted for count-up hooks) ─────────
-function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, complianceRisk, urgentCompliance, maxScheduleWeek, scanStats, animate }: {
+function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, complianceRisk, urgentCompliance, maxScheduleWeek, scanStats, codebasePath, animate }: {
   result: NonNullable<ReturnType<typeof useAnalysisStore.getState>['result']>
   totalRisk: number
   reduction: number
@@ -520,6 +540,7 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
   urgentCompliance: number
   maxScheduleWeek: number
   scanStats: { servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[] } | null
+  codebasePath: string
   animate: boolean
 }) {
   // Mark results as seen after first render
@@ -550,6 +571,124 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
 
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState(false)
+
+  // ─── Fix-All session state ───────────────────────────────────
+  const [fixPhase, setFixPhase] = useState<FixPhase>('idle')
+  const [fixVulns, setFixVulns] = useState<FixVulnRow[]>([])
+  const [fixCanUndo, setFixCanUndo] = useState(false)
+  const [undoing, setUndoing] = useState(false)
+  const [rescanning, setRescanning] = useState(false)
+  const agents = useAgentStore(s => s.agents)
+
+  useEffect(() => {
+    const unsubs: (() => void)[] = []
+
+    unsubs.push(window.api.on('fix:started', (data: unknown) => {
+      const { canUndo } = data as { total: number; canUndo: boolean }
+      setFixPhase('patching')
+      setFixCanUndo(canUndo)
+    }))
+
+    unsubs.push(window.api.on('fix:vulnStart', (data: unknown) => {
+      const d = data as {
+        index: number; cveId: string; title: string; affectedPackage: string
+        patchedVersion: string; severity: string; complexity: 'low' | 'medium' | 'high'; model: string
+      }
+      setFixVulns(prev => {
+        const next = [...prev]
+        while (next.length <= d.index) {
+          next.push({
+            index: next.length, cveId: '', title: '', affectedPackage: '', patchedVersion: '',
+            severity: 'low', complexity: 'low', model: '', status: 'pending',
+            agentId: null, changedFiles: [], error: null
+          })
+        }
+        next[d.index] = {
+          ...next[d.index],
+          index: d.index,
+          cveId: d.cveId,
+          title: d.title,
+          affectedPackage: d.affectedPackage,
+          patchedVersion: d.patchedVersion,
+          severity: d.severity,
+          complexity: d.complexity,
+          model: d.model,
+          status: 'running'
+        }
+        return next
+      })
+    }))
+
+    unsubs.push(window.api.on('fix:vulnDone', (data: unknown) => {
+      const d = data as {
+        index: number; cveId: string; success: boolean; agentId?: string
+        changedFiles?: string[]; error?: string
+      }
+      setFixVulns(prev => {
+        const next = [...prev]
+        if (next[d.index]) {
+          next[d.index] = {
+            ...next[d.index],
+            status: d.success ? 'done' : 'failed',
+            agentId: d.agentId ?? null,
+            changedFiles: d.changedFiles ?? [],
+            error: d.error ?? null
+          }
+        }
+        return next
+      })
+    }))
+
+    unsubs.push(window.api.on('fix:complete', (data: unknown) => {
+      const d = data as { succeeded: number; failed: number; canUndo: boolean }
+      setFixPhase('done')
+      setFixCanUndo(d.canUndo)
+    }))
+
+    return () => { for (const u of unsubs) u() }
+  }, [])
+
+  async function handleFixAll() {
+    if (!codebasePath) {
+      console.error('No codebase path — cannot fix')
+      return
+    }
+    setFixVulns([])
+    setFixPhase('patching')
+    try {
+      await window.api.invoke('fix:all', { codebasePath })
+    } catch (err) {
+      console.error('fix:all failed:', err)
+      setFixPhase('done')
+    }
+  }
+
+  async function handleUndo() {
+    setUndoing(true)
+    try {
+      await window.api.invoke('fix:undo')
+      setFixPhase('idle')
+      setFixVulns([])
+      setFixCanUndo(false)
+    } catch (err) {
+      console.error('fix:undo failed:', err)
+    }
+    setUndoing(false)
+  }
+
+  async function handleRescan() {
+    if (!codebasePath) return
+    setRescanning(true)
+    try {
+      useAnalysisStore.getState().reset()
+      await window.api.invoke('analysis:analyzeCodebase', { codebasePath, iterations: 5000 })
+      setFixPhase('idle')
+      setFixVulns([])
+    } catch (err) {
+      console.error('rescan failed:', err)
+    }
+    setRescanning(false)
+  }
 
   async function handleExport() {
     setExporting(true)
@@ -669,6 +808,21 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
         </div>
       )}
 
+      {/* Fix-All Panel — shown while patching or after completion */}
+      {fixPhase !== 'idle' && (
+        <FixAllPanel
+          phase={fixPhase}
+          vulns={fixVulns}
+          agents={agents}
+          canUndo={fixCanUndo}
+          undoing={undoing}
+          rescanning={rescanning}
+          onUndo={handleUndo}
+          onRescan={handleRescan}
+          onDismiss={() => setFixPhase('idle')}
+        />
+      )}
+
       {/* Charts Grid */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className={a('animate-slideUp stagger-7')}><DependencyGraph /></div>
@@ -685,6 +839,18 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
             <h3 className="text-sm font-bold text-white">Top Priority Patches</h3>
             <span className="text-[9px] bg-surface-800 text-surface-400 px-2 py-0.5 rounded-full font-bold">FAVR Optimized</span>
           </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleFixAll}
+              disabled={fixPhase === 'patching' || !codebasePath || vulnCount === 0}
+              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-btn bg-green-500/10 border border-green-500/40 text-green-300 hover:bg-green-500/20 hover:border-green-500/60 transition-all btn-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              title={codebasePath ? 'Dispatch agents to patch every vulnerability in optimal order' : 'Scan a codebase first'}
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              {fixPhase === 'patching' ? 'Patching...' : 'Fix All with Agents'}
+            </button>
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -713,6 +879,7 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
               </>
             )}
           </button>
+          </div>
         </div>
         <div className="grid gap-2">
           {result.simulation.optimalOrder.slice(0, 5).map((vulnId, i) => {
@@ -825,4 +992,154 @@ function extractShortResult(msg: string): string {
   // Try to extract the key info
   const found = msg.match(/Found \d+.*|Enriched \d+.*|Risk reduction:.*|Graph built:.*|Schedule built:.*|\d+ frameworks.*|\d+ Pareto.*|Blast radius computed.*/)
   return found ? found[0] : msg.slice(0, 60) + '...'
+}
+
+// ─── Fix-All Panel ────────────────────────────────────────────
+function FixAllPanel({
+  phase, vulns, agents, canUndo, undoing, rescanning, onUndo, onRescan, onDismiss
+}: {
+  phase: FixPhase
+  vulns: FixVulnRow[]
+  agents: ReturnType<typeof useAgentStore.getState>['agents']
+  canUndo: boolean
+  undoing: boolean
+  rescanning: boolean
+  onUndo: () => void
+  onRescan: () => void
+  onDismiss: () => void
+}) {
+  const total = vulns.length
+  const done = vulns.filter(v => v.status === 'done').length
+  const failed = vulns.filter(v => v.status === 'failed').length
+  const running = vulns.find(v => v.status === 'running')
+
+  return (
+    <div className="bg-surface-900 border border-green-500/30 rounded-card p-5 mb-6 animate-slideUp">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-2 h-2 rounded-full ${phase === 'patching' ? 'bg-green-400 animate-pulse' : 'bg-green-500'}`} />
+          <div>
+            <div className="text-sm font-bold text-white">
+              {phase === 'patching' ? 'Agents Patching Vulnerabilities' : 'Patching Complete'}
+            </div>
+            <div className="text-[10px] text-surface-400 mt-0.5">
+              {phase === 'patching'
+                ? `${done}/${total} done · ${failed} failed${running ? ` · currently fixing ${running.affectedPackage}` : ''}`
+                : `${done} succeeded, ${failed} failed out of ${total}`}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {phase === 'done' && (
+            <>
+              <button
+                onClick={onRescan}
+                disabled={rescanning}
+                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-btn bg-green-500/20 border border-green-500/50 text-green-200 hover:bg-green-500/30 transition-all btn-hover disabled:opacity-40"
+              >
+                {rescanning ? 'Rescanning...' : 'Rescan Codebase'}
+              </button>
+              {canUndo && (
+                <button
+                  onClick={onUndo}
+                  disabled={undoing}
+                  className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-btn bg-surface-800 border border-surface-700 text-surface-300 hover:bg-surface-700 hover:text-white transition-all btn-hover disabled:opacity-40"
+                >
+                  {undoing ? 'Undoing...' : 'Undo All Changes'}
+                </button>
+              )}
+              <button
+                onClick={onDismiss}
+                className="text-surface-500 hover:text-white transition-colors px-2"
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      {phase === 'patching' && total > 0 && (
+        <div className="h-1 bg-surface-800 rounded-full overflow-hidden mb-4">
+          <div
+            className="h-full bg-green-400 transition-all duration-300"
+            style={{ width: `${((done + failed) / total) * 100}%` }}
+          />
+        </div>
+      )}
+
+      {/* Vuln rows with agent cards */}
+      <div className="grid gap-2 max-h-[420px] overflow-y-auto pr-1">
+        {vulns.map((v) => {
+          const agent = v.agentId ? agents[v.agentId] : undefined
+          const lastLines = agent?.outputLines.slice(-3) ?? []
+          const statusColor =
+            v.status === 'done' ? 'text-green-400 border-green-500/40 bg-green-500/5' :
+            v.status === 'failed' ? 'text-red-400 border-red-500/40 bg-red-500/5' :
+            v.status === 'running' ? 'text-blue-300 border-blue-500/50 bg-blue-500/5' :
+            'text-surface-500 border-surface-800 bg-surface-900'
+
+          return (
+            <div key={`${v.index}-${v.cveId}`} className={`border rounded-btn p-3 transition-all ${statusColor}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] font-black font-mono shrink-0">#{v.index + 1}</span>
+                  <span className="text-xs font-bold text-white truncate">{v.affectedPackage}</span>
+                  <span className="text-[10px] text-surface-500 font-mono truncate">→ {v.patchedVersion || 'latest'}</span>
+                  <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full border ${SEVERITY_COLORS[v.severity] ?? ''}`}>
+                    {v.severity}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[9px] font-mono text-surface-500">{v.model.split('/').pop()}</span>
+                  {v.status === 'running' && (
+                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  )}
+                  {v.status === 'done' && (
+                    <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  {v.status === 'failed' && (
+                    <svg className="w-3 h-3 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                  {v.status === 'pending' && (
+                    <span className="text-[9px] text-surface-600 uppercase">queued</span>
+                  )}
+                </div>
+              </div>
+              <div className="text-[10px] text-surface-500 font-mono truncate mb-1">{v.cveId} — {v.title}</div>
+
+              {/* Live output lines from the agent */}
+              {lastLines.length > 0 && v.status === 'running' && (
+                <div className="bg-black/40 rounded px-2 py-1.5 mt-1.5 font-mono text-[9px] text-surface-400 space-y-0.5">
+                  {lastLines.map((line, idx) => (
+                    <div key={idx} className="truncate">{line}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Changed files summary on success */}
+              {v.status === 'done' && v.changedFiles.length > 0 && (
+                <div className="text-[9px] text-green-400/80 mt-1 font-mono truncate">
+                  Patched: {v.changedFiles.join(', ')}
+                </div>
+              )}
+
+              {/* Error on failure */}
+              {v.status === 'failed' && v.error && (
+                <div className="text-[9px] text-red-400/80 mt-1 truncate">{v.error}</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }

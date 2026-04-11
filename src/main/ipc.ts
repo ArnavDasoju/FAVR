@@ -1,7 +1,10 @@
 import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
 import { writeFileSync } from 'fs'
-import { taskQueue } from './tasks/queue'
+import { execSync } from 'child_process'
+import { taskQueue, type QueuedSubtask } from './tasks/queue'
 import { agentManager } from './agents/manager'
+import { modelRouter } from './optimization/router'
+import type { Vulnerability } from './engine/types'
 import { getSettings, saveSettings, saveProject, removeProject as removePersistedProject } from './store'
 import { cloudClient } from './cloud/supabase'
 import { runAnalysis, runWhatIf, generateReport } from './engine/index'
@@ -14,6 +17,9 @@ import { analyzeCodebase } from './ingest/codebase-analyzer'
 
 // Store the latest analysis result for quick access
 let latestAnalysis: AnalysisResult | null = null
+
+// Stash reference created at the start of a fix-all run — used by fix:undo
+let fixSessionStash: { cwd: string; created: boolean } | null = null
 
 export function setupIpc(): void {
   // ── Dialogs ──────────────────────────────────────────────────
@@ -227,6 +233,152 @@ export function setupIpc(): void {
     return result.filePath
   })
 
+  // ── Fix-All (agents patch vulnerabilities in Monte-Carlo optimal order) ───
+  ipcMain.handle('fix:all', async (_event, data: { codebasePath: string }) => {
+    if (!latestAnalysis) throw new Error('Run a scan first')
+    if (!data.codebasePath) throw new Error('Codebase path required')
+
+    const { codebasePath } = data
+    const vulns = latestAnalysis.graph.vulnerabilities
+    const order = latestAnalysis.simulation.optimalOrder
+    const services = latestAnalysis.graph.services
+
+    const emit = (channel: string, payload: unknown) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(channel, payload)
+      }
+    }
+
+    // Safety net: stash current working tree so "Undo" restores it
+    fixSessionStash = null
+    try {
+      const porcelain = execSync('git status --porcelain', { cwd: codebasePath, encoding: 'utf-8' }).trim()
+      if (porcelain.length > 0) {
+        execSync('git stash push -u -m "favr-fix-all-backup"', { cwd: codebasePath, encoding: 'utf-8' })
+        fixSessionStash = { cwd: codebasePath, created: true }
+      } else {
+        // Clean tree — nothing to stash, but we can still undo by reverting subsequent changes
+        fixSessionStash = { cwd: codebasePath, created: false }
+      }
+    } catch (err) {
+      console.warn('[fix:all] git not available — running without undo safety net:', err)
+    }
+
+    emit('fix:started', {
+      total: order.length,
+      canUndo: fixSessionStash !== null && fixSessionStash.created
+    })
+
+    const results: { cveId: string; success: boolean; error?: string; agentId?: string }[] = []
+
+    for (let i = 0; i < order.length; i++) {
+      const vulnId = order[i]
+      // optimalOrder contains internal vuln ids (e.g. "vuln-001"), not CVE ids
+      const vuln = vulns.find(v => v.id === vulnId) ?? vulns.find(v => v.cveId === vulnId)
+      if (!vuln) {
+        results.push({ cveId: vulnId, success: false, error: 'vuln not found in analysis' })
+        emit('fix:vulnDone', { index: i, cveId: vulnId, success: false, error: 'vuln not found' })
+        continue
+      }
+      const cveId = vuln.cveId
+
+      const serviceNames = vuln.affectedServiceIds
+        .map(id => services.find(s => s.id === id)?.name)
+        .filter((n): n is string => !!n)
+
+      // Router picks cheapest capable model for this vuln's complexity
+      const model = modelRouter.route('general', vuln.complexity)
+      const prompt = buildFixPrompt(vuln, serviceNames)
+
+      const subtask: QueuedSubtask = {
+        id: crypto.randomUUID(),
+        parentId: `fix-${cveId}`,
+        prompt,
+        originalPrompt: prompt,
+        taskType: 'general',
+        complexity: vuln.complexity,
+        suggestedModel: null,
+        assignedModel: model,
+        assignedAgentId: null,
+        status: 'running',
+        retryCount: 0,
+        maxRetries: 0,
+        confidence: null,
+        error: null,
+        createdAt: Date.now(),
+        startedAt: Date.now(),
+        completedAt: null,
+        gitBranch: null,
+        gitOriginalBranch: null,
+        gitStashed: false
+      }
+
+      emit('fix:vulnStart', {
+        index: i,
+        cveId,
+        title: vuln.title,
+        affectedPackage: vuln.affectedPackage,
+        patchedVersion: vuln.patchedVersion,
+        severity: vuln.severity,
+        complexity: vuln.complexity,
+        model
+      })
+
+      try {
+        const agentId = await agentManager.spawn(subtask, codebasePath)
+        const agent = agentManager.getAgent(agentId)
+        const success = agent?.status === 'done'
+        const changedFiles = agent?.changedFiles ?? []
+        results.push({ cveId, success, agentId })
+        emit('fix:vulnDone', {
+          index: i,
+          cveId,
+          success,
+          agentId,
+          changedFiles,
+          error: success ? undefined : (agent?.outputLines.slice(-3).join(' ') ?? 'agent failed')
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        results.push({ cveId, success: false, error: msg })
+        emit('fix:vulnDone', { index: i, cveId, success: false, error: msg })
+      }
+    }
+
+    emit('fix:complete', {
+      total: order.length,
+      succeeded: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      canUndo: fixSessionStash !== null && fixSessionStash.created
+    })
+
+    return { results }
+  })
+
+  ipcMain.handle('fix:undo', async () => {
+    if (!fixSessionStash) {
+      throw new Error('Nothing to undo — no fix session active')
+    }
+    const { cwd, created } = fixSessionStash
+
+    try {
+      // Drop any files the agents wrote back to their pre-fix state
+      execSync('git checkout -- .', { cwd, encoding: 'utf-8' })
+      execSync('git clean -fd', { cwd, encoding: 'utf-8' })
+
+      // Restore the stash we made at the start of the run (if any)
+      if (created) {
+        execSync('git stash pop', { cwd, encoding: 'utf-8' })
+      }
+
+      fixSessionStash = null
+      return { success: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`Undo failed: ${msg}`)
+    }
+  })
+
   // ── Documents ───────────────────────────────────────────────
   ipcMain.handle('documents:parse', async (_event, filePaths: string[]) => {
     return parseDocuments(filePaths)
@@ -397,6 +549,44 @@ export function setupIpc(): void {
   ipcMain.handle('cloud:validate', async (_event, params) => {
     return cloudClient.validate(params)
   })
+}
+
+/**
+ * Build a patch prompt for one vulnerability. Tells the agent which package to
+ * bump, to what version, and asks it to fix calling code if the upgrade has
+ * breaking changes. Uses the FILE: marker format so file-applier picks up edits.
+ */
+function buildFixPrompt(vuln: Vulnerability, serviceNames: string[]): string {
+  const [pkgName, currentVersion] = vuln.affectedPackage.split('@')
+  const patchedParts = (vuln.patchedVersion ?? '').split('@')
+  const targetVersion = patchedParts.length > 1 ? patchedParts.slice(1).join('@') : 'latest safe version'
+  const serviceHint = serviceNames.length > 0
+    ? ` in service(s): ${serviceNames.join(', ')}`
+    : ''
+
+  return `Patch vulnerability ${vuln.cveId} — ${vuln.title}
+
+Package: ${pkgName}
+Current version: ${currentVersion ?? 'unknown'}
+Target version: ${targetVersion}
+Severity: ${vuln.severity} (CVSS ${vuln.cvssScore})${serviceHint}
+
+Details:
+${vuln.description}
+
+Your task:
+1. Find the dependency manifest (package.json, requirements.txt, go.mod, Cargo.toml, pom.xml, or Gemfile) in this project that depends on "${pkgName}".
+2. Update that dependency to version "${targetVersion}".
+3. If the upgrade has known breaking changes, also update any calling code in the project that uses the affected package so it matches the new API.
+4. Do not touch files unrelated to this vulnerability.
+
+Output every file you modify using this exact format, one block per file:
+
+FILE: <relative/path/to/file>
+\`\`\`
+<full updated file contents>
+\`\`\`
+`
 }
 
 /**
