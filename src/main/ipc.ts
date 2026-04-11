@@ -66,7 +66,6 @@ export function setupIpc(): void {
         services: scenario.services,
         dependencies: scenario.dependencies,
         vulnerabilities: scenario.vulnerabilities,
-        iterations: 5000,
         onProgress: (p) => emit('analysis:progress', p)
       })
 
@@ -125,7 +124,7 @@ export function setupIpc(): void {
         services: parsedInput.services,
         dependencies: parsedInput.dependencies,
         vulnerabilities: parsedInput.vulnerabilities,
-        iterations: data.iterations ?? 5000,
+        iterations: data.iterations,
         onProgress: (p) => emit('analysis:progress', p)
       })
 
@@ -194,7 +193,7 @@ export function setupIpc(): void {
         services: codebaseResult.services,
         dependencies: codebaseResult.dependencies,
         vulnerabilities: codebaseResult.vulnerabilities,
-        iterations: data.iterations ?? 5000,
+        iterations: data.iterations,
         onProgress: (p) => emit('analysis:progress', p)
       })
 

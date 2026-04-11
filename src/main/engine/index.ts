@@ -27,7 +27,7 @@ export async function runAnalysis(input: {
   onProgress?: ProgressCallback
 }): Promise<AnalysisResult> {
   const { services, dependencies, vulnerabilities, onProgress } = input
-  const iterations = input.iterations ?? 10000
+  const iterations = input.iterations ?? 500
 
   // Phase 0: Enrich with real EPSS data from FIRST.org
   onProgress?.({ phase: 'graph', progress: 0, message: 'Fetching real EPSS scores from FIRST.org...' })
