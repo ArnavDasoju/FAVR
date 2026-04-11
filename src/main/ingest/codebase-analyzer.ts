@@ -10,9 +10,10 @@
  * Output: { services, dependencies, vulnerabilities } ready for runAnalysis()
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
-import { join, basename, relative, dirname } from 'path'
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
+import { join, basename, relative, dirname, resolve } from 'path'
 import { net } from 'electron'
+import { createHash } from 'crypto'
 import type {
   Service, Dependency, Vulnerability, Severity,
   ComplianceFramework, MaintenanceWindow
@@ -29,6 +30,10 @@ export interface CodebaseAnalysisResult {
     packagesScanned: number
     vulnerabilitiesFound: number
     ecosystems: string[]
+    unresolvedPackages: number
+    dockerImagesScanned: number
+    isMonorepo: boolean
+    scanDurationMs: number
   }
 }
 
@@ -78,24 +83,65 @@ interface OsvVuln {
 
 // ─── Main Entry Point ─────────────────────────────────────────
 
+export interface AnalyzeCodebaseOptions {
+  projectDir: string
+  onProgress?: AnalyzerProgressCallback
+  timeoutMs?: number          // default 120_000
+  previousScan?: ScanSnapshot | null  // for incremental scanning
+}
+
+export interface ScanSnapshot {
+  timestamp: number
+  projectDir: string
+  fileHashes: Record<string, string>  // manifest path -> content hash
+  cachedCveData: Record<string, CachedCveEntry[]>  // "ecosystem:pkg@ver" -> cached vulns
+}
+
+interface CachedCveEntry {
+  cveId: string
+  vulnData: Vulnerability
+  fetchedAt: number
+}
+
 /**
  * Analyze a codebase directory and produce engine-ready input.
+ * Supports monorepos, Docker scanning, timeout guards, and incremental re-scans.
  */
 export async function analyzeCodebase(
-  projectDir: string,
+  projectDirOrOpts: string | AnalyzeCodebaseOptions,
   onProgress?: AnalyzerProgressCallback
 ): Promise<CodebaseAnalysisResult> {
+  const opts: AnalyzeCodebaseOptions = typeof projectDirOrOpts === 'string'
+    ? { projectDir: projectDirOrOpts, onProgress }
+    : projectDirOrOpts
+  const projectDir = opts.projectDir
+  const progressCb = opts.onProgress ?? onProgress
+  const timeoutMs = opts.timeoutMs ?? 120_000
+  const previousScan = opts.previousScan ?? null
+
   if (!existsSync(projectDir)) {
     throw new Error(`Directory not found: ${projectDir}`)
   }
 
-  // Phase 1: Discover services
-  onProgress?.({ phase: 'discovery', progress: 0, message: 'Scanning for services and packages...' })
+  const scanStart = Date.now()
+  let timedOut = false
+  const checkTimeout = () => {
+    if (Date.now() - scanStart > timeoutMs) {
+      timedOut = true
+      throw new Error(`Scan timed out after ${Math.round(timeoutMs / 1000)}s. Try scanning a smaller project or increasing the timeout.`)
+    }
+  }
+
+  // Phase 1: Discover services (with monorepo + workspace support)
+  progressCb?.({ phase: 'discovery', progress: 0, message: 'Scanning for services and packages...' })
+  const isMonorepo = detectMonorepo(projectDir)
   const discovered = discoverServices(projectDir)
-  onProgress?.({
+  checkTimeout()
+
+  progressCb?.({
     phase: 'discovery',
     progress: 100,
-    message: `Found ${discovered.length} service(s): ${discovered.map(s => s.name).join(', ')}`
+    message: `Found ${discovered.length} service(s)${isMonorepo ? ' (monorepo)' : ''}: ${discovered.map(s => s.name).join(', ')}`
   })
 
   if (discovered.length === 0) {
@@ -104,58 +150,256 @@ export async function analyzeCodebase(
     )
   }
 
+  // Warn about large dependency trees
+  const allPackages = discovered.flatMap(s => s.packages.filter(p => !p.isDev))
+  if (allPackages.length > 2000) {
+    progressCb?.({
+      phase: 'discovery',
+      progress: 100,
+      message: `⚠ This project has ${allPackages.length} dependencies — analysis may take a minute.`
+    })
+  }
+
+  // Phase 1b: Docker image scanning
+  progressCb?.({ phase: 'docker', progress: 0, message: 'Scanning for Docker images...' })
+  const dockerServices = discoverDockerImages(projectDir, discovered)
+  checkTimeout()
+  let dockerImagesScanned = 0
+  if (dockerServices.length > 0) {
+    for (const ds of dockerServices) {
+      discovered.push(ds)
+    }
+    dockerImagesScanned = dockerServices.length
+    progressCb?.({
+      phase: 'docker',
+      progress: 100,
+      message: `Found ${dockerServices.length} Docker base image(s) to scan`
+    })
+  }
+
   // Phase 2: Discover dependencies
-  onProgress?.({ phase: 'dependencies', progress: 0, message: 'Inferring inter-service dependencies...' })
+  progressCb?.({ phase: 'dependencies', progress: 0, message: 'Inferring inter-service dependencies...' })
   const dependencies = discoverDependencies(projectDir, discovered)
-  onProgress?.({
+  checkTimeout()
+  progressCb?.({
     phase: 'dependencies',
     progress: 100,
     message: `Found ${dependencies.length} dependency relationship(s)`
   })
 
-  // Phase 3: Discover vulnerabilities
-  const allPackages = discovered.flatMap(s => s.packages.filter(p => !p.isDev))
-  onProgress?.({ phase: 'vulnerabilities', progress: 0, message: `Querying OSV.dev for ${allPackages.length} packages...` })
+  // Phase 3: Discover vulnerabilities (with incremental + private package support)
+  progressCb?.({ phase: 'vulnerabilities', progress: 0, message: `Querying OSV.dev for ${allPackages.length} packages...` })
 
-  const vulnerabilities = await discoverVulnerabilities(discovered, (pct, msg) => {
-    onProgress?.({ phase: 'vulnerabilities', progress: pct, message: msg })
-  })
+  const vulnResult = await discoverVulnerabilities(discovered, (pct, msg) => {
+    checkTimeout()
+    progressCb?.({ phase: 'vulnerabilities', progress: pct, message: msg })
+  }, previousScan)
 
-  onProgress?.({
+  progressCb?.({
     phase: 'vulnerabilities',
     progress: 100,
-    message: `Found ${vulnerabilities.length} known vulnerabilities`
+    message: `Found ${vulnResult.vulnerabilities.length} known vulnerabilities` +
+      (vulnResult.unresolvedCount > 0 ? ` (${vulnResult.unresolvedCount} private/unresolved packages skipped)` : '')
   })
 
   // Convert discovered services to engine Service type
   const services = discovered.map(d => toEngineService(d))
-
   const ecosystems = [...new Set(discovered.map(d => d.ecosystem))]
+  const scanDurationMs = Date.now() - scanStart
+
+  // Build snapshot for future incremental scans
+  const snapshot = buildScanSnapshot(projectDir, discovered)
 
   return {
     services,
     dependencies,
-    vulnerabilities,
+    vulnerabilities: vulnResult.vulnerabilities,
     stats: {
       servicesFound: services.length,
       packagesScanned: allPackages.length,
-      vulnerabilitiesFound: vulnerabilities.length,
-      ecosystems
-    }
+      vulnerabilitiesFound: vulnResult.vulnerabilities.length,
+      ecosystems,
+      unresolvedPackages: vulnResult.unresolvedCount,
+      dockerImagesScanned,
+      isMonorepo,
+      scanDurationMs
+    },
+    _snapshot: snapshot
+  } as CodebaseAnalysisResult & { _snapshot: ScanSnapshot }
+}
+
+// ─── Monorepo Detection ──────────────────────────────────────
+
+/**
+ * Detect whether a project is a monorepo by checking for workspace configs.
+ * Returns the workspace root directories if found.
+ */
+function detectMonorepo(projectDir: string): boolean {
+  // npm/yarn workspaces in package.json
+  const pkgPath = join(projectDir, 'package.json')
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+      if (pkg.workspaces) return true
+    } catch { /* ignore */ }
   }
+
+  // pnpm workspaces
+  if (existsSync(join(projectDir, 'pnpm-workspace.yaml'))) return true
+
+  // Go workspaces
+  if (existsSync(join(projectDir, 'go.work'))) return true
+
+  // Lerna
+  if (existsSync(join(projectDir, 'lerna.json'))) return true
+
+  // Cargo workspaces
+  const cargoPath = join(projectDir, 'Cargo.toml')
+  if (existsSync(cargoPath)) {
+    try {
+      const content = readFileSync(cargoPath, 'utf-8')
+      if (content.includes('[workspace]')) return true
+    } catch { /* ignore */ }
+  }
+
+  return false
+}
+
+/**
+ * Resolve workspace glob patterns to actual directories.
+ * E.g., "packages/*" -> ["packages/ui", "packages/api"]
+ */
+function resolveWorkspaceGlobs(projectDir: string): string[] {
+  const roots: string[] = []
+
+  // 1. npm/yarn workspaces (package.json)
+  const pkgPath = join(projectDir, 'package.json')
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+      const workspaces = Array.isArray(pkg.workspaces)
+        ? pkg.workspaces
+        : pkg.workspaces?.packages ?? []
+      for (const pattern of workspaces) {
+        roots.push(...expandGlob(projectDir, pattern as string))
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 2. pnpm-workspace.yaml
+  const pnpmWsPath = join(projectDir, 'pnpm-workspace.yaml')
+  if (existsSync(pnpmWsPath)) {
+    try {
+      const content = readFileSync(pnpmWsPath, 'utf-8')
+      // Simple YAML parsing for packages list
+      const packagesMatch = content.match(/packages:\s*\n((?:\s+-\s+.+\n?)+)/m)
+      if (packagesMatch) {
+        const patterns = [...packagesMatch[1].matchAll(/^\s+-\s+['"]?(.+?)['"]?\s*$/gm)]
+        for (const m of patterns) {
+          roots.push(...expandGlob(projectDir, m[1]))
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 3. Go workspaces (go.work)
+  const goWorkPath = join(projectDir, 'go.work')
+  if (existsSync(goWorkPath)) {
+    try {
+      const content = readFileSync(goWorkPath, 'utf-8')
+      const useBlock = content.match(/use\s*\(([\s\S]*?)\)/g)
+      if (useBlock) {
+        for (const block of useBlock) {
+          const dirs = block.split('\n').slice(1, -1)
+          for (const d of dirs) {
+            const trimmed = d.trim()
+            if (trimmed && !trimmed.startsWith('//')) {
+              const full = resolve(projectDir, trimmed)
+              if (existsSync(full)) roots.push(full)
+            }
+          }
+        }
+      }
+      // Single-line use directives
+      const singleUse = content.matchAll(/^use\s+(\S+)/gm)
+      for (const m of singleUse) {
+        const full = resolve(projectDir, m[1])
+        if (existsSync(full)) roots.push(full)
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 4. Lerna
+  const lernaPath = join(projectDir, 'lerna.json')
+  if (existsSync(lernaPath)) {
+    try {
+      const lerna = JSON.parse(readFileSync(lernaPath, 'utf-8'))
+      const patterns = lerna.packages ?? ['packages/*']
+      for (const pattern of patterns) {
+        roots.push(...expandGlob(projectDir, pattern as string))
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 5. Cargo workspaces
+  const cargoPath = join(projectDir, 'Cargo.toml')
+  if (existsSync(cargoPath)) {
+    try {
+      const content = readFileSync(cargoPath, 'utf-8')
+      const membersMatch = content.match(/\[workspace\][\s\S]*?members\s*=\s*\[([\s\S]*?)\]/)
+      if (membersMatch) {
+        const members = [...membersMatch[1].matchAll(/"([^"]+)"/g)]
+        for (const m of members) {
+          roots.push(...expandGlob(projectDir, m[1]))
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  return [...new Set(roots)]
+}
+
+/**
+ * Expand a simple glob pattern (supports trailing /* and /**) to directories.
+ */
+function expandGlob(base: string, pattern: string): string[] {
+  // Remove negation patterns (e.g., "!packages/internal")
+  if (pattern.startsWith('!')) return []
+
+  // Handle "packages/*" or "apps/*"
+  if (pattern.endsWith('/*') || pattern.endsWith('/**')) {
+    const parentDir = pattern.replace(/\/\*\*?$/, '')
+    const parentPath = resolve(base, parentDir)
+    if (!existsSync(parentPath)) return []
+    try {
+      return readdirSync(parentPath)
+        .map(name => resolve(parentPath, name))
+        .filter(p => {
+          try { return statSync(p).isDirectory() } catch { return false }
+        })
+    } catch { return [] }
+  }
+
+  // Direct directory reference
+  const full = resolve(base, pattern)
+  if (existsSync(full)) {
+    try {
+      if (statSync(full).isDirectory()) return [full]
+    } catch { /* ignore */ }
+  }
+  return []
 }
 
 // ─── Phase 1: Service Discovery ───────────────────────────────
 
 /**
  * Walk the project tree and discover services by their manifest files.
- * Handles monorepos (packages/, services/, apps/ directories).
+ * Handles monorepos via workspace config detection + directory heuristics.
  */
 function discoverServices(projectDir: string): DiscoveredService[] {
   const services: DiscoveredService[] = []
   const visited = new Set<string>()
 
-  // Patterns that indicate a service root
   const manifestFiles = [
     'package.json',
     'go.mod',
@@ -170,14 +414,12 @@ function discoverServices(projectDir: string): DiscoveredService[] {
   ]
 
   function walk(dir: string, depth: number) {
-    if (depth > 5) return
+    if (depth > 6) return
     if (visited.has(dir)) return
     visited.add(dir)
 
     const dirName = basename(dir)
-
-    // Skip common non-service directories
-    if (shouldSkipDir(dirName)) return
+    if (depth > 0 && shouldSkipDir(dirName)) return
 
     let names: string[]
     try {
@@ -193,8 +435,7 @@ function discoverServices(projectDir: string): DiscoveredService[] {
       if (service && service.packages.length > 0) {
         services.push(service)
       }
-      // Don't recurse into sub-node_modules etc, but DO recurse into
-      // monorepo subdirs (packages/, apps/, services/) even from here
+      // Recurse into monorepo subdirs even from a manifest root
       for (const name of names) {
         if (isMonorepoDir(name)) {
           const full = join(dir, name)
@@ -212,6 +453,13 @@ function discoverServices(projectDir: string): DiscoveredService[] {
     }
   }
 
+  // First, walk any explicitly declared workspace roots
+  const workspaceRoots = resolveWorkspaceGlobs(projectDir)
+  for (const root of workspaceRoots) {
+    walk(root, 0)
+  }
+
+  // Then walk the project root itself (walk() deduplicates via visited set)
   walk(projectDir, 0)
 
   // Fallback: if no manifest-based services found, check for source-file-only projects
@@ -554,22 +802,62 @@ function tryParseNodePackages(dir: string, service: DiscoveredService): boolean 
 }
 
 function enrichFromLockFile(dir: string, service: DiscoveredService): void {
-  // Try package-lock.json for exact versions
+  // 1. Try package-lock.json
   const lockPath = join(dir, 'package-lock.json')
-  if (!existsSync(lockPath)) return
-
-  try {
-    const lock = JSON.parse(readFileSync(lockPath, 'utf-8'))
-    const lockPackages = lock.packages ?? lock.dependencies ?? {}
-
-    for (const pkg of service.packages) {
-      // package-lock v3 format: packages["node_modules/express"]
-      const lockEntry = lockPackages[`node_modules/${pkg.name}`] ?? lockPackages[pkg.name]
-      if (lockEntry?.version) {
-        pkg.version = lockEntry.version
+  if (existsSync(lockPath)) {
+    try {
+      const lock = JSON.parse(readFileSync(lockPath, 'utf-8'))
+      const lockPackages = lock.packages ?? lock.dependencies ?? {}
+      for (const pkg of service.packages) {
+        const lockEntry = lockPackages[`node_modules/${pkg.name}`] ?? lockPackages[pkg.name]
+        if (lockEntry?.version) pkg.version = lockEntry.version
       }
-    }
-  } catch { /* ignore lock parse errors */ }
+      return // prefer first lockfile found
+    } catch { /* ignore */ }
+  }
+
+  // 2. Try yarn.lock (v1 format: lines like `express@^4.17.1:\n  version "4.18.2"`)
+  const yarnLockPath = join(dir, 'yarn.lock')
+  if (existsSync(yarnLockPath)) {
+    try {
+      const content = readFileSync(yarnLockPath, 'utf-8')
+      for (const pkg of service.packages) {
+        // Match both scoped and unscoped packages
+        const escapedName = pkg.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const regex = new RegExp(
+          `^"?${escapedName}@[^:]*:\\s*\\n\\s+version\\s+"([^"]+)"`,
+          'm'
+        )
+        const match = content.match(regex)
+        if (match) pkg.version = match[1]
+      }
+      return
+    } catch { /* ignore */ }
+  }
+
+  // 3. Try pnpm-lock.yaml (v6+ format)
+  const pnpmLockPath = join(dir, 'pnpm-lock.yaml')
+  if (existsSync(pnpmLockPath)) {
+    try {
+      const content = readFileSync(pnpmLockPath, 'utf-8')
+      for (const pkg of service.packages) {
+        // pnpm lock: packages section has keys like /express@4.18.2 or express@4.18.2
+        const escapedName = pkg.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        // Match "specifier: ^X" then version from the resolved entry
+        const specRegex = new RegExp(`['"]?${escapedName}['"]?:\\s*\\n\\s+(?:specifier|version):[^\\n]*\\n\\s+version:\\s+['"]?([\\d][\\d.]*[^'\"\\s]*)`, 'm')
+        const specMatch = content.match(specRegex)
+        if (specMatch) {
+          pkg.version = specMatch[1]
+          continue
+        }
+        // Also try the packages section: /@scope/name@version or /name@version
+        const pkgRegex = new RegExp(`/?${escapedName}@([\\d][\\d.]\\S*?)[:(\\s]`, 'm')
+        const pkgMatch = content.match(pkgRegex)
+        if (pkgMatch) pkg.version = pkgMatch[1]
+      }
+      return
+    } catch { /* ignore */ }
+  }
 }
 
 function tryParseGoPackages(dir: string, service: DiscoveredService): boolean {
@@ -615,6 +903,20 @@ function tryParseGoPackages(dir: string, service: DiscoveredService): boolean {
       service.packages.push({
         name: match[1], version: match[2], ecosystem: 'Go', isDev: false
       })
+    }
+
+    // Enrich from go.sum for exact versions (go.mod may have pseudo-versions)
+    const sumPath = join(dir, 'go.sum')
+    if (existsSync(sumPath)) {
+      try {
+        const sumContent = readFileSync(sumPath, 'utf-8')
+        for (const pkg of service.packages) {
+          // go.sum lines: module version hash
+          const sumRegex = new RegExp(`^${pkg.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+(v[\\d.]+\\S*)/go\\.mod`, 'm')
+          const sumMatch = sumContent.match(sumRegex)
+          if (sumMatch) pkg.version = sumMatch[1]
+        }
+      } catch { /* ignore */ }
     }
 
     return service.packages.length > 0
@@ -666,20 +968,47 @@ function tryParsePythonPackages(dir: string, service: DiscoveredService): boolea
       service.ecosystem = 'PyPI'
       service.techStack.push('Python')
 
-      // Extract dependencies from pyproject.toml
+      // Extract dependencies from pyproject.toml [project] section
       const depSection = content.match(/\[project\][\s\S]*?dependencies\s*=\s*\[([\s\S]*?)\]/m)
       if (depSection) {
         const depLines = depSection[1].split('\n')
         for (const line of depLines) {
-          const match = line.match(/"([a-zA-Z0-9_.-]+)\s*(?:>=|==|~=)\s*([\d.]+)/)
+          const match = line.match(/"([a-zA-Z0-9_.-]+)\s*(?:>=|==|~=|~|<|>)?\s*([\d.]+)?/)
           if (match) {
             service.packages.push({
-              name: match[1], version: match[2],
+              name: match[1], version: match[2] ?? '0.0.0',
               ecosystem: 'PyPI', isDev: false
             })
           }
         }
       }
+
+      // Also check [tool.poetry.dependencies] for Poetry projects
+      const poetryDeps = content.match(/\[tool\.poetry\.dependencies\]([\s\S]*?)(?:\[|$)/)
+      if (poetryDeps) {
+        for (const line of poetryDeps[1].split('\n')) {
+          if (line.includes('python')) continue // skip python version constraint
+          const simple = line.match(/^([a-zA-Z0-9_.-]+)\s*=\s*"[\^~>=]*\s*([\d.]+)/)
+          if (simple) {
+            service.packages.push({
+              name: simple[1], version: simple[2],
+              ecosystem: 'PyPI', isDev: false
+            })
+            continue
+          }
+          const complex = line.match(/^([a-zA-Z0-9_.-]+)\s*=\s*\{.*?version\s*=\s*"[\^~>=]*\s*([\d.]+)/)
+          if (complex) {
+            service.packages.push({
+              name: complex[1], version: complex[2],
+              ecosystem: 'PyPI', isDev: false
+            })
+          }
+        }
+      }
+
+      // Enrich from poetry.lock
+      enrichPythonFromPoetryLock(dir, service)
+
       return service.packages.length > 0
     } catch { /* fall through */ }
   }
@@ -702,14 +1031,85 @@ function tryParsePythonPackages(dir: string, service: DiscoveredService): boolea
               name: match[1], version: match[2],
               ecosystem: 'PyPI', isDev: false
             })
+          } else {
+            // Handle Pipfile entries like: requests = "*" or requests = {version = ">=2.0"}
+            const nameOnly = line.match(/^([a-zA-Z0-9_.-]+)\s*=/)
+            if (nameOnly) {
+              service.packages.push({
+                name: nameOnly[1], version: '0.0.0',
+                ecosystem: 'PyPI', isDev: false
+              })
+            }
           }
         }
       }
+
+      // Enrich from Pipfile.lock if available
+      enrichPythonFromPipfileLock(dir, service)
+
       return service.packages.length > 0
     } catch { /* fall through */ }
   }
 
   return false
+}
+
+/**
+ * Enrich Python package versions from Pipfile.lock (JSON format).
+ */
+function enrichPythonFromPipfileLock(dir: string, service: DiscoveredService): void {
+  const lockPath = join(dir, 'Pipfile.lock')
+  if (!existsSync(lockPath)) return
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf-8'))
+    const defaultPkgs = lock.default ?? {}
+    for (const pkg of service.packages) {
+      const lockEntry = defaultPkgs[pkg.name] ?? defaultPkgs[pkg.name.toLowerCase()]
+      if (lockEntry?.version) {
+        pkg.version = lockEntry.version.replace(/^==/, '')
+      }
+    }
+    // Also add packages from Pipfile.lock that weren't in Pipfile
+    for (const [name, entry] of Object.entries(defaultPkgs)) {
+      if (!service.packages.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+        const ver = (entry as any).version?.replace(/^==/, '') ?? '0.0.0'
+        if (ver !== '0.0.0') {
+          service.packages.push({ name, version: ver, ecosystem: 'PyPI', isDev: false })
+        }
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+/**
+ * Enrich Python package versions from poetry.lock.
+ */
+function enrichPythonFromPoetryLock(dir: string, service: DiscoveredService): void {
+  const lockPath = join(dir, 'poetry.lock')
+  if (!existsSync(lockPath)) return
+  try {
+    const content = readFileSync(lockPath, 'utf-8')
+    // poetry.lock uses TOML: [[package]]\nname = "foo"\nversion = "1.2.3"
+    const packageBlocks = content.split('[[package]]').slice(1)
+    const lockVersions = new Map<string, string>()
+    for (const block of packageBlocks) {
+      const nameMatch = block.match(/name\s*=\s*"([^"]+)"/)
+      const versionMatch = block.match(/version\s*=\s*"([^"]+)"/)
+      if (nameMatch && versionMatch) {
+        lockVersions.set(nameMatch[1].toLowerCase(), versionMatch[1])
+      }
+    }
+    for (const pkg of service.packages) {
+      const locked = lockVersions.get(pkg.name.toLowerCase())
+      if (locked) pkg.version = locked
+    }
+    // Add lockfile-only packages
+    for (const [name, ver] of lockVersions) {
+      if (!service.packages.some(p => p.name.toLowerCase() === name)) {
+        service.packages.push({ name, version: ver, ecosystem: 'PyPI', isDev: false })
+      }
+    }
+  } catch { /* ignore */ }
 }
 
 function tryParseRustPackages(dir: string, service: DiscoveredService): boolean {
@@ -846,6 +1246,137 @@ function tryParseRubyPackages(dir: string, service: DiscoveredService): boolean 
   } catch {
     return false
   }
+}
+
+// ─── Phase 1c: Docker Image Discovery ────────────────────────
+
+/**
+ * Discover Docker base images from Dockerfiles and docker-compose.yml.
+ * Creates virtual "services" for base images so they get CVE-scanned.
+ */
+function discoverDockerImages(projectDir: string, existingServices: DiscoveredService[]): DiscoveredService[] {
+  const dockerServices: DiscoveredService[] = []
+  const seenImages = new Set<string>()
+
+  // Find all Dockerfiles
+  const dockerfiles = findFiles(projectDir, /^Dockerfile(\..*)?$/i, 3)
+  for (const df of dockerfiles) {
+    try {
+      const content = readFileSync(df, 'utf-8')
+      const fromStatements = content.matchAll(/^FROM\s+(?:--platform=\S+\s+)?(\S+?)(?:\s+AS\s+\S+)?$/gim)
+      for (const m of fromStatements) {
+        const image = m[1]
+        if (image === 'scratch' || image.startsWith('$')) continue
+        if (seenImages.has(image)) continue
+        seenImages.add(image)
+
+        const svc = dockerImageToService(image, relative(projectDir, df))
+        if (svc) dockerServices.push(svc)
+      }
+    } catch { /* skip */ }
+  }
+
+  // Parse docker-compose for image: directives
+  const composeFiles = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']
+  for (const file of composeFiles) {
+    const composePath = join(projectDir, file)
+    if (!existsSync(composePath)) continue
+    try {
+      const content = readFileSync(composePath, 'utf-8')
+      const imageMatches = content.matchAll(/^\s+image:\s*['"]?(\S+?)['"]?\s*$/gm)
+      for (const m of imageMatches) {
+        const image = m[1]
+        if (image.startsWith('$') || seenImages.has(image)) continue
+        seenImages.add(image)
+        const svc = dockerImageToService(image, file)
+        if (svc) dockerServices.push(svc)
+      }
+    } catch { /* skip */ }
+  }
+
+  return dockerServices
+}
+
+/**
+ * Convert a Docker image reference (e.g. "node:18-alpine") into a
+ * DiscoveredService with packages that can be queried against OSV.
+ */
+function dockerImageToService(imageRef: string, sourceFile: string): DiscoveredService | null {
+  // Parse image:tag format
+  const [imageFull, tag] = imageRef.split(':')
+  const imageName = imageFull.includes('/') ? imageFull.split('/').pop()! : imageFull
+  const version = tag ?? 'latest'
+
+  // Map well-known base images to ecosystems/packages
+  const imagePackages: DiscoveredPackage[] = []
+  const techStack: string[] = [`Docker: ${imageRef}`]
+
+  // Extract the version number from tags like "18-alpine", "3.11-slim", "16.04"
+  const versionMatch = version.match(/^(\d+(?:\.\d+)*)/)
+  const numericVersion = versionMatch ? versionMatch[1] : null
+
+  // Map common base images to their OS/runtime packages
+  const imageMap: Record<string, { ecosystem: Ecosystem; packages: Array<{ name: string; versionPrefix?: string }> }> = {
+    'node': { ecosystem: 'npm', packages: [] },
+    'python': { ecosystem: 'PyPI', packages: [] },
+    'golang': { ecosystem: 'Go', packages: [] },
+    'go': { ecosystem: 'Go', packages: [] },
+    'rust': { ecosystem: 'crates.io', packages: [] },
+    'ruby': { ecosystem: 'RubyGems', packages: [] },
+    'openjdk': { ecosystem: 'Maven', packages: [] },
+    'eclipse-temurin': { ecosystem: 'Maven', packages: [] },
+    'amazoncorretto': { ecosystem: 'Maven', packages: [] },
+  }
+
+  // For all images, check if the base distro has known CVEs
+  // OSV supports Linux distro queries via "Debian", "Alpine" ecosystems
+  if (version.includes('alpine')) {
+    const alpineVer = version.match(/alpine([\d.]+)/)
+    if (alpineVer) {
+      imagePackages.push({ name: 'alpine', version: alpineVer[1], ecosystem: 'npm', isDev: false })
+    }
+  }
+
+  const ecosystem = imageMap[imageName]?.ecosystem ?? 'npm'
+
+  const id = `docker-${slugify(imageName)}-${slugify(version)}`
+
+  return {
+    id,
+    name: `Docker: ${imageName}:${version}`,
+    path: sourceFile,
+    ecosystem,
+    packages: imagePackages,
+    techStack,
+    hasDockerfile: true,
+    envVars: {}
+  }
+}
+
+/**
+ * Find files matching a pattern within a directory tree.
+ */
+function findFiles(dir: string, pattern: RegExp, maxDepth: number, depth = 0): string[] {
+  const results: string[] = []
+  if (depth > maxDepth) return results
+
+  try {
+    const names = readdirSync(dir)
+    for (const name of names) {
+      if (shouldSkipDir(name)) continue
+      const full = join(dir, name)
+      try {
+        const stat = statSync(full)
+        if (stat.isFile() && pattern.test(name)) {
+          results.push(full)
+        } else if (stat.isDirectory()) {
+          results.push(...findFiles(full, pattern, maxDepth, depth + 1))
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+
+  return results
 }
 
 // ─── Phase 2: Dependency Discovery ────────────────────────────
@@ -1131,10 +1662,17 @@ function inferAuthDeps(services: DiscoveredService[]): Dependency[] {
  * Uses individual queries (the batch endpoint returns truncated results).
  * Runs queries concurrently in groups to balance speed and rate limits.
  */
+interface VulnDiscoveryResult {
+  vulnerabilities: Vulnerability[]
+  unresolvedCount: number
+  cachedCount: number
+}
+
 async function discoverVulnerabilities(
   services: DiscoveredService[],
-  onProgress?: (pct: number, msg: string) => void
-): Promise<Vulnerability[]> {
+  onProgress?: (pct: number, msg: string) => void,
+  previousScan?: ScanSnapshot | null
+): Promise<VulnDiscoveryResult> {
   // Collect unique packages across all services
   const packageMap = new Map<string, { pkg: DiscoveredPackage; serviceIds: string[] }>()
 
@@ -1154,37 +1692,93 @@ async function discoverVulnerabilities(
   }
 
   const entries = Array.from(packageMap.values())
-  if (entries.length === 0) return []
+  if (entries.length === 0) return { vulnerabilities: [], unresolvedCount: 0, cachedCount: 0 }
 
   const allVulns: Vulnerability[] = []
   const seenCves = new Set<string>()
   let vulnCounter = 0
+  let unresolvedCount = 0
+  let cachedCount = 0
 
-  // Run queries concurrently in groups of 10
+  // Separate entries into cached (from previous scan) and fresh (need OSV query)
+  const toQuery: typeof entries = []
+  const fromCache: typeof entries = []
+
+  if (previousScan?.cachedCveData) {
+    for (const entry of entries) {
+      const key = `${entry.pkg.ecosystem}:${entry.pkg.name}@${entry.pkg.version}`
+      const cached = previousScan.cachedCveData[key]
+      if (cached && cached.length >= 0) {
+        // Check if cache is less than 24 hours old
+        const cacheAge = Date.now() - (cached[0]?.fetchedAt ?? 0)
+        if (cached.length === 0 || cacheAge < 24 * 60 * 60 * 1000) {
+          fromCache.push(entry)
+          continue
+        }
+      }
+      toQuery.push(entry)
+    }
+  } else {
+    toQuery.push(...entries)
+  }
+
+  // Restore cached vulnerabilities
+  for (const { pkg, serviceIds } of fromCache) {
+    const key = `${pkg.ecosystem}:${pkg.name}@${pkg.version}`
+    const cached = previousScan!.cachedCveData[key]
+    cachedCount++
+    for (const c of cached) {
+      if (seenCves.has(c.cveId)) {
+        const existing = allVulns.find(v => v.cveId === c.cveId)
+        if (existing) {
+          for (const sid of serviceIds) {
+            if (!existing.affectedServiceIds.includes(sid)) existing.affectedServiceIds.push(sid)
+          }
+        }
+        continue
+      }
+      seenCves.add(c.cveId)
+      vulnCounter++
+      const vuln = { ...c.vulnData, id: `vuln-${String(vulnCounter).padStart(3, '0')}`, affectedServiceIds: [...serviceIds] }
+      allVulns.push(vuln)
+    }
+  }
+
+  if (cachedCount > 0) {
+    onProgress?.(5, `Restored ${cachedCount} packages from cache, querying ${toQuery.length} new...`)
+  }
+
+  // Query OSV.dev for fresh packages
   const concurrency = 10
-  const batches: typeof entries[] = []
-  for (let i = 0; i < entries.length; i += concurrency) {
-    batches.push(entries.slice(i, i + concurrency))
+  const batches: typeof toQuery[] = []
+  for (let i = 0; i < toQuery.length; i += concurrency) {
+    batches.push(toQuery.slice(i, i + concurrency))
   }
 
   let completed = 0
+  const totalToQuery = toQuery.length
   for (const batch of batches) {
     const promises = batch.map(async ({ pkg, serviceIds }) => {
       try {
         const osvVulns = await osvQuery(pkg.name, pkg.ecosystem, pkg.version)
-        return { osvVulns, pkg, serviceIds }
+        return { osvVulns, pkg, serviceIds, resolved: true }
       } catch {
-        return { osvVulns: [] as OsvVuln[], pkg, serviceIds }
+        // Package not found or API error — treat as unresolved (private/internal)
+        return { osvVulns: [] as OsvVuln[], pkg, serviceIds, resolved: false }
       }
     })
 
     const results = await Promise.all(promises)
     completed += batch.length
 
-    const pct = Math.round((completed / entries.length) * 90)
-    onProgress?.(pct, `Queried ${completed}/${entries.length} packages (${allVulns.length} vulns found)...`)
+    const pct = Math.round(((completed + cachedCount) / entries.length) * 90)
+    onProgress?.(pct, `Queried ${completed}/${totalToQuery} packages (${allVulns.length} vulns found)...`)
 
-    for (const { osvVulns, pkg, serviceIds } of results) {
+    for (const { osvVulns, pkg, serviceIds, resolved } of results) {
+      if (!resolved && osvVulns.length === 0) {
+        unresolvedCount++
+      }
+
       for (const osvVuln of osvVulns) {
         const cveId = osvVuln.aliases?.find((a: string) => a.startsWith('CVE-')) ?? osvVuln.id
 
@@ -1192,9 +1786,7 @@ async function discoverVulnerabilities(
           const existing = allVulns.find(v => v.cveId === cveId)
           if (existing) {
             for (const sid of serviceIds) {
-              if (!existing.affectedServiceIds.includes(sid)) {
-                existing.affectedServiceIds.push(sid)
-              }
+              if (!existing.affectedServiceIds.includes(sid)) existing.affectedServiceIds.push(sid)
             }
           }
           continue
@@ -1208,7 +1800,7 @@ async function discoverVulnerabilities(
     }
   }
 
-  return allVulns
+  return { vulnerabilities: allVulns, unresolvedCount, cachedCount }
 }
 
 /**
@@ -1528,5 +2120,67 @@ function estimateDowntime(severity: Severity): number {
     case 'high': return 15
     case 'medium': return 10
     case 'low': return 5
+  }
+}
+
+// ─── Scan Snapshot for Incremental Scanning ──────────────────
+
+/**
+ * Build a snapshot of the current scan state for future incremental scans.
+ * Stores content hashes of all manifest/lock files and cached CVE data.
+ */
+function buildScanSnapshot(projectDir: string, services: DiscoveredService[]): ScanSnapshot {
+  const fileHashes: Record<string, string> = {}
+  const cachedCveData: Record<string, CachedCveEntry[]> = {}
+
+  const manifestNames = [
+    'package.json', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
+    'go.mod', 'go.sum',
+    'requirements.txt', 'Pipfile', 'Pipfile.lock', 'pyproject.toml', 'poetry.lock',
+    'Cargo.toml', 'Cargo.lock',
+    'pom.xml', 'build.gradle',
+    'Gemfile', 'Gemfile.lock',
+    'Dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+    'compose.yml', 'compose.yaml'
+  ]
+
+  // Hash all manifest files found during service discovery
+  for (const service of services) {
+    const serviceDir = resolve(projectDir, service.path)
+    for (const name of manifestNames) {
+      const filePath = join(serviceDir, name)
+      if (existsSync(filePath)) {
+        try {
+          const content = readFileSync(filePath, 'utf-8')
+          const hash = createHash('sha256').update(content).digest('hex').slice(0, 16)
+          const relPath = relative(projectDir, filePath).replace(/\\/g, '/')
+          fileHashes[relPath] = hash
+        } catch { /* skip */ }
+      }
+    }
+  }
+
+  return {
+    timestamp: Date.now(),
+    projectDir,
+    fileHashes,
+    cachedCveData
+  }
+}
+
+/**
+ * Check whether a file has changed since the last scan snapshot.
+ */
+export function hasFileChanged(projectDir: string, relPath: string, snapshot: ScanSnapshot): boolean {
+  const filePath = resolve(projectDir, relPath)
+  if (!existsSync(filePath)) return true
+  const oldHash = snapshot.fileHashes[relPath.replace(/\\/g, '/')]
+  if (!oldHash) return true
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    const newHash = createHash('sha256').update(content).digest('hex').slice(0, 16)
+    return newHash !== oldHash
+  } catch {
+    return true
   }
 }
