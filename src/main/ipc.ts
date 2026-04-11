@@ -4,21 +4,16 @@ import { execSync } from 'child_process'
 import { taskQueue, type QueuedSubtask } from './tasks/queue'
 import { agentManager } from './agents/manager'
 import { modelRouter } from './optimization/router'
-import type { Vulnerability } from './engine/types'
 import { getSettings, saveSettings, saveProject, removeProject as removePersistedProject } from './store'
 import { cloudClient } from './cloud/supabase'
-import { runAnalysis, runWhatIf, generateReport } from './engine/index'
-import { buildAttackGraph } from './engine/attack-graph'
-import type { AnalysisResult, WhatIfConstraints } from './engine/types'
-import { loadMeridianScenario } from './data/meridian-scenario'
-import { parseDocuments } from './ingest/parser'
-import { scanCodebase } from './ingest/scanner'
-import { analyzeCodebase } from './ingest/codebase-analyzer'
-import type { ScanSnapshot } from './ingest/codebase-analyzer'
 import {
+  runAnalysis, runWhatIf, generateReport,
+  loadMeridianScenario, parseDocuments, scanCodebase, analyzeCodebase,
   saveScanResult, listScanHistory, getProjectHistory,
-  loadScanResult, getLatestSnapshot, deleteScanResult, clearScanHistory
-} from './ingest/scan-history'
+  loadScanResult, getLatestSnapshot, deleteScanResult, clearScanHistory,
+  type Vulnerability, type AnalysisResult, type WhatIfConstraints, type ScanSnapshot,
+  buildAttackGraph
+} from '@favr/core'
 import { getFreshness, clearVulnCache } from './ingest/vuln-data-pipeline'
 
 // Store the latest analysis result for quick access

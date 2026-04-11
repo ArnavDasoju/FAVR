@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Mission control for AI coding agents",
   "main": "./out/main/index.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -10,6 +13,7 @@
     "package": "electron-vite build && electron-builder"
   },
   "dependencies": {
+    "@favr/core": "*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@types/d3": "^7.4.3",
