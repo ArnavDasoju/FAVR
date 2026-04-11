@@ -19,6 +19,7 @@ import {
   saveScanResult, listScanHistory, getProjectHistory,
   loadScanResult, getLatestSnapshot, deleteScanResult, clearScanHistory
 } from './ingest/scan-history'
+import { getFreshness, clearVulnCache } from './ingest/vuln-data-pipeline'
 
 // Store the latest analysis result for quick access
 let latestAnalysis: AnalysisResult | null = null
@@ -263,6 +264,16 @@ export function setupIpc(): void {
 
   ipcMain.handle('scanHistory:clear', async () => {
     clearScanHistory()
+    return true
+  })
+
+  // ── Vulnerability Data Freshness ────────────────────────────
+  ipcMain.handle('vuln:getFreshness', async () => {
+    return getFreshness()
+  })
+
+  ipcMain.handle('vuln:clearCache', async () => {
+    clearVulnCache()
     return true
   })
 

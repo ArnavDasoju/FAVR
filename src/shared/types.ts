@@ -270,6 +270,13 @@ export interface FavrAnalysisResult {
     violations: { framework: ComplianceFramework; vulnIds: string[]; urgentCount: number }[]
     overallComplianceRisk: number
   }
+  dataFreshness: {
+    osv: { name: string; lastQueried: number | null; available: boolean; entriesReturned: number; error?: string }
+    nvd: { name: string; lastQueried: number | null; available: boolean; entriesReturned: number; error?: string }
+    ghsa: { name: string; lastQueried: number | null; available: boolean; entriesReturned: number; error?: string }
+    kev: { name: string; lastQueried: number | null; available: boolean; entriesReturned: number; error?: string }
+    epss: { name: string; lastQueried: number | null; available: boolean; entriesReturned: number; error?: string }
+  } | null
   timestamp: number
   engineVersion: string
 }
