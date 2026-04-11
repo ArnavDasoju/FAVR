@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAnalysisStore } from '../stores/analysisStore'
 import { useAgentStore } from '../stores/agentStore'
 import DependencyGraph from './charts/DependencyGraph'
@@ -40,6 +40,7 @@ interface PhaseInfo {
 
 const SCAN_PHASES: PhaseInfo[] = [
   { id: 'discovery',       label: 'Discovering services',              icon: '🔍' },
+  { id: 'docker',                  label: 'Scanning Docker images',   icon: '🐳' },
   { id: 'dependencies',    label: 'Mapping dependencies',              icon: '🔗' },
   { id: 'vulnerabilities', label: 'Querying vulnerability databases',  icon: '🛡' },
   { id: 'graph',           label: 'Building attack graph',             icon: '📊' },
@@ -94,7 +95,9 @@ export default function Dashboard() {
 
   const [codebasePath, setCodebasePath] = useState('')
   const [loading, setLoading] = useState(false)
-  const [scanStats, setScanStats] = useState<{ servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[] } | null>(null)
+  const [scanStats, setScanStats] = useState<{ servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[]; unresolvedPackages?: number; dockerImagesScanned?: number; isMonorepo?: boolean; scanDurationMs?: number } | null>(null)
+  const [scanHistory, setScanHistory] = useState<Array<{ id: string; projectPath: string; projectName: string; timestamp: number; durationMs: number; stats: any }>>([])
+  const [showHistory, setShowHistory] = useState(false)
 
   // Track completed phases with their final messages
   const [completedPhases, setCompletedPhases] = useState<Map<string, string>>(new Map())
@@ -194,6 +197,36 @@ export default function Dashboard() {
     if (files) {
       useAnalysisStore.getState().setUploadedFiles(files)
     }
+  }
+
+  // Load scan history on mount
+  const loadHistory = useCallback(async () => {
+    try {
+      const history = await window.api.invoke('scanHistory:list') as typeof scanHistory
+      setScanHistory(history ?? [])
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadHistory() }, [loadHistory])
+
+  async function handleLoadScan(scanId: string) {
+    setLoading(true)
+    setShowResults(false)
+    try {
+      const result = await window.api.invoke('scanHistory:load', scanId) as any
+      if (result?.stats) setScanStats(result.stats)
+      setShowResults(true)
+    } catch (err) {
+      console.error('Failed to load scan:', err)
+    }
+    setLoading(false)
+  }
+
+  async function handleDeleteScan(scanId: string) {
+    try {
+      await window.api.invoke('scanHistory:delete', scanId)
+      loadHistory()
+    } catch { /* ignore */ }
   }
 
   // ─── No Analysis Yet — Premium Landing ─────────────────────
@@ -346,7 +379,7 @@ export default function Dashboard() {
           {/* Supported ecosystems hint */}
           {mode === 'analysis' && (
             <div className="mt-6 flex items-center justify-center gap-4 animate-fadeIn stagger-6">
-              {['Node.js', 'Python', 'Go', 'Rust', 'Java', 'Ruby'].map(eco => (
+              {['Node.js', 'Python', 'Go', 'Rust', 'Java', 'Ruby', 'Docker'].map(eco => (
                 <span key={eco} className="text-[10px] text-surface-600 font-mono">{eco}</span>
               ))}
             </div>
@@ -355,6 +388,53 @@ export default function Dashboard() {
           {error && (
             <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-btn p-3 text-xs text-red-400 animate-slideUp">
               {error}
+            </div>
+          )}
+
+          {/* Scan History */}
+          {scanHistory.length > 0 && (
+            <div className="mt-6 animate-fadeIn">
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="w-full flex items-center justify-between text-xs text-surface-500 hover:text-surface-300 transition-colors mb-2 px-1"
+              >
+                <span className="font-bold">Recent Scans ({scanHistory.length})</span>
+                <span className="text-[10px]">{showHistory ? 'Hide' : 'Show'}</span>
+              </button>
+              {showHistory && (
+                <div className="bg-surface-900 border border-surface-800 rounded-card overflow-hidden">
+                  {scanHistory.slice(0, 10).map((scan) => (
+                    <div
+                      key={scan.id}
+                      className="flex items-center gap-3 px-4 py-3 border-b border-surface-800 last:border-b-0 hover:bg-surface-800/50 transition-colors group"
+                    >
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleLoadScan(scan.id)}>
+                        <div className="text-xs text-white font-medium truncate">{scan.projectName}</div>
+                        <div className="text-[10px] text-surface-500 flex items-center gap-2 mt-0.5">
+                          <span>{new Date(scan.timestamp).toLocaleDateString()}</span>
+                          <span>·</span>
+                          <span>{scan.stats?.vulnerabilitiesFound ?? 0} vulns</span>
+                          <span>·</span>
+                          <span>{scan.stats?.servicesFound ?? 0} services</span>
+                          {scan.durationMs > 0 && (
+                            <>
+                              <span>·</span>
+                              <span>{(scan.durationMs / 1000).toFixed(1)}s</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteScan(scan.id) }}
+                        className="text-surface-600 hover:text-red-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete scan"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -539,7 +619,7 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
   complianceRisk: number
   urgentCompliance: number
   maxScheduleWeek: number
-  scanStats: { servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[] } | null
+  scanStats: { servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[]; unresolvedPackages?: number; dockerImagesScanned?: number; isMonorepo?: boolean; scanDurationMs?: number } | null
   codebasePath: string
   animate: boolean
 }) {
@@ -708,15 +788,24 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
     <div className="h-full overflow-y-auto p-6">
       {/* Scan stats banner (if came from codebase scan) */}
       {scanStats && (
-        <div className={`bg-surface-900 border border-surface-800 rounded-card p-3 mb-4 flex items-center gap-6 ${a('animate-slideUp')}`}>
+        <div className={`bg-surface-900 border border-surface-800 rounded-card p-3 mb-4 flex items-center gap-4 flex-wrap ${a('animate-slideUp')}`}>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
             <span className="text-[10px] font-bold text-green-400">Scan Complete</span>
           </div>
-          <span className="text-[10px] text-surface-500">{scanStats.servicesFound} services</span>
+          <span className="text-[10px] text-surface-500">{scanStats.servicesFound} services{scanStats.isMonorepo ? ' (monorepo)' : ''}</span>
           <span className="text-[10px] text-surface-500">{scanStats.packagesScanned} packages</span>
           <span className="text-[10px] text-surface-500">{scanStats.vulnerabilitiesFound} vulnerabilities</span>
+          {(scanStats.unresolvedPackages ?? 0) > 0 && (
+            <span className="text-[10px] text-surface-600">{scanStats.unresolvedPackages} private/skipped</span>
+          )}
+          {(scanStats.dockerImagesScanned ?? 0) > 0 && (
+            <span className="text-[10px] text-surface-500">{scanStats.dockerImagesScanned} Docker images</span>
+          )}
           <span className="text-[10px] text-surface-600 font-mono">{scanStats.ecosystems.join(', ')}</span>
+          {(scanStats.scanDurationMs ?? 0) > 0 && (
+            <span className="text-[10px] text-surface-600">{((scanStats.scanDurationMs ?? 0) / 1000).toFixed(1)}s</span>
+          )}
         </div>
       )}
 

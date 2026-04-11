@@ -132,7 +132,7 @@ export type Severity = 'critical' | 'high' | 'medium' | 'low'
 
 export type ComplianceFramework = 'PCI-DSS' | 'SOX' | 'HIPAA' | 'GDPR' | 'SOC2' | 'NIST' | 'ISO27001'
 
-export type AnalysisPhase = 'idle' | 'discovery' | 'dependencies' | 'vulnerabilities' | 'ingest' | 'scan' | 'graph' | 'bayesian' | 'monte-carlo' | 'pareto' | 'blast-radius' | 'scheduling' | 'compliance' | 'complete' | 'error'
+export type AnalysisPhase = 'idle' | 'discovery' | 'docker' | 'dependencies' | 'vulnerabilities' | 'ingest' | 'scan' | 'graph' | 'bayesian' | 'monte-carlo' | 'pareto' | 'blast-radius' | 'scheduling' | 'compliance' | 'complete' | 'error'
 
 export interface FavrMaintenanceWindow {
   day: string

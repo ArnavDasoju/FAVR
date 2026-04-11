@@ -14,6 +14,11 @@ import { loadMeridianScenario } from './data/meridian-scenario'
 import { parseDocuments } from './ingest/parser'
 import { scanCodebase } from './ingest/scanner'
 import { analyzeCodebase } from './ingest/codebase-analyzer'
+import type { ScanSnapshot } from './ingest/codebase-analyzer'
+import {
+  saveScanResult, listScanHistory, getProjectHistory,
+  loadScanResult, getLatestSnapshot, deleteScanResult, clearScanHistory
+} from './ingest/scan-history'
 
 // Store the latest analysis result for quick access
 let latestAnalysis: AnalysisResult | null = null
@@ -148,6 +153,8 @@ export function setupIpc(): void {
   ipcMain.handle('analysis:analyzeCodebase', async (_event, data: {
     codebasePath: string
     iterations?: number
+    incremental?: boolean
+    timeoutMs?: number
   }) => {
     const emit = (channel: string, payload: unknown) => {
       for (const win of BrowserWindow.getAllWindows()) {
@@ -156,10 +163,19 @@ export function setupIpc(): void {
     }
 
     try {
+      // Get previous scan snapshot for incremental scanning
+      let previousScan: ScanSnapshot | null = null
+      if (data.incremental !== false) {
+        previousScan = getLatestSnapshot(data.codebasePath)
+      }
+
       // Phase 1-3: Discover services, dependencies, vulnerabilities from real codebase
-      const codebaseResult = await analyzeCodebase(data.codebasePath, (p) => {
-        emit('analysis:progress', p)
-      })
+      const codebaseResult = await analyzeCodebase({
+        projectDir: data.codebasePath,
+        onProgress: (p) => emit('analysis:progress', p),
+        timeoutMs: data.timeoutMs,
+        previousScan
+      }) as any // _snapshot is attached
 
       if (codebaseResult.vulnerabilities.length === 0) {
         emit('analysis:progress', {
@@ -183,6 +199,24 @@ export function setupIpc(): void {
       })
 
       latestAnalysis = result
+
+      // Save to scan history
+      const projectName = data.codebasePath.split(/[/\\]/).pop() ?? 'unknown'
+      saveScanResult({
+        projectPath: data.codebasePath,
+        projectName,
+        timestamp: Date.now(),
+        durationMs: codebaseResult.stats.scanDurationMs,
+        stats: codebaseResult.stats,
+        analysisJson: JSON.stringify(serializeAnalysis(result)),
+        snapshot: codebaseResult._snapshot ?? {
+          timestamp: Date.now(),
+          projectDir: data.codebasePath,
+          fileHashes: {},
+          cachedCveData: {}
+        }
+      })
+
       emit('analysis:complete', serializeAnalysis(result))
       return {
         analysis: serializeAnalysis(result),
@@ -193,6 +227,44 @@ export function setupIpc(): void {
       emit('analysis:error', msg)
       throw err
     }
+  })
+
+  // ── Scan History ──────────────────────────────────────────
+  ipcMain.handle('scanHistory:list', async () => {
+    return listScanHistory()
+  })
+
+  ipcMain.handle('scanHistory:projectHistory', async (_event, projectPath: string) => {
+    return getProjectHistory(projectPath)
+  })
+
+  ipcMain.handle('scanHistory:load', async (_event, scanId: string) => {
+    const entry = loadScanResult(scanId)
+    if (!entry) throw new Error(`Scan not found: ${scanId}`)
+
+    // Restore as the latest analysis
+    try {
+      const parsed = JSON.parse(entry.analysisJson)
+      latestAnalysis = parsed
+      const emit = (channel: string, payload: unknown) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(channel, payload)
+        }
+      }
+      emit('analysis:complete', parsed)
+      return { analysis: parsed, stats: entry.stats }
+    } catch (err) {
+      throw new Error('Failed to parse saved scan data')
+    }
+  })
+
+  ipcMain.handle('scanHistory:delete', async (_event, scanId: string) => {
+    return deleteScanResult(scanId)
+  })
+
+  ipcMain.handle('scanHistory:clear', async () => {
+    clearScanHistory()
+    return true
   })
 
   // ── What-If Scenarios ────────────────────────────────────────
