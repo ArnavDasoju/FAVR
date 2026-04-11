@@ -1,9 +1,19 @@
+import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useAnalysisStore } from '../../stores/analysisStore'
+import { ChartSkeleton } from '../Skeleton'
 
 export default function BeforeAfterBar() {
   const result = useAnalysisStore(s => s.result)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 100)
+    return () => clearTimeout(timer)
+  }, [])
+
   if (!result) return null
+  if (!mounted) return <ChartSkeleton height={260} title="Before / After Risk" />
 
   const data = result.graph.services.map(service => {
     const beforeRisk = result.riskScores[service.id] ?? 0

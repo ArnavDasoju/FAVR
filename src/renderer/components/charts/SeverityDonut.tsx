@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { useAnalysisStore } from '../../stores/analysisStore'
 
@@ -10,6 +11,13 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 export default function SeverityDonut() {
   const result = useAnalysisStore(s => s.result)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 120)
+    return () => clearTimeout(timer)
+  }, [])
+
   if (!result) return null
 
   const counts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 }
@@ -20,6 +28,27 @@ export default function SeverityDonut() {
   const data = Object.entries(counts)
     .filter(([_, count]) => count > 0)
     .map(([severity, count]) => ({ name: severity, value: count }))
+
+  if (!mounted) {
+    return (
+      <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+        <div className="animate-shimmer w-36 h-4 rounded-btn mb-1" />
+        <div className="animate-shimmer w-44 h-2 rounded-btn mb-4" />
+        <div className="flex items-center gap-4">
+          <div className="animate-shimmer rounded-full" style={{ width: 140, height: 140 }} />
+          <div className="flex flex-col gap-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="animate-shimmer w-2.5 h-2.5 rounded-sm" style={{ animationDelay: `${i * 100}ms` }} />
+                <div className="animate-shimmer w-14 h-2 rounded-btn" style={{ animationDelay: `${i * 100}ms` }} />
+                <div className="animate-shimmer w-6 h-3 rounded-btn" style={{ animationDelay: `${i * 100}ms` }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-surface-900 border border-surface-800 rounded-card p-4">

@@ -1,12 +1,21 @@
+import { useState, useEffect } from 'react'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useAnalysisStore } from '../../stores/analysisStore'
+import { ChartSkeleton } from '../Skeleton'
 
 export default function ParetoFrontier() {
   const result = useAnalysisStore(s => s.result)
   const selectedParetoId = useAnalysisStore(s => s.selectedParetoId)
   const selectPareto = useAnalysisStore(s => s.selectPareto)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 100)
+    return () => clearTimeout(timer)
+  }, [])
 
   if (!result) return null
+  if (!mounted) return <ChartSkeleton height={280} title="Pareto Frontier" />
 
   const frontierSet = new Set(result.pareto.frontierIds)
   const frontierSolutions = result.pareto.solutions.filter(s => frontierSet.has(s.id))

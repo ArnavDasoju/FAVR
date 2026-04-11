@@ -548,12 +548,21 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
   const displayCompliance = animate ? animCompliance : complianceRisk
   const displayWeeks = animate ? animWeeks : maxScheduleWeek
 
+  const [exporting, setExporting] = useState(false)
+  const [exported, setExported] = useState(false)
+
   async function handleExport() {
+    setExporting(true)
     try {
-      await window.api.invoke('analysis:exportReport')
+      const path = await window.api.invoke('analysis:exportReport')
+      if (path) {
+        setExported(true)
+        setTimeout(() => setExported(false), 3000)
+      }
     } catch (err) {
       console.error('Export failed:', err)
     }
+    setExporting(false)
   }
 
   return (
@@ -651,9 +660,11 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
           </div>
           <button
             onClick={handleExport}
-            className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold rounded-btn hover:bg-purple-500/30 transition-colors btn-hover"
+            disabled={exporting}
+            className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold rounded-btn hover:bg-purple-500/30 transition-colors btn-hover disabled:opacity-50 flex items-center gap-1.5"
           >
-            Export Report
+            {exporting && <div className="w-3 h-3 rounded-full border border-purple-400 border-t-transparent animate-spin" />}
+            {exported ? 'Saved' : exporting ? 'Exporting...' : 'Export Report'}
           </button>
         </div>
       )}
@@ -676,12 +687,31 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
           </div>
           <button
             onClick={handleExport}
-            className="flex items-center gap-1.5 text-[10px] font-bold text-surface-400 hover:text-white transition-colors uppercase tracking-wider btn-hover"
+            disabled={exporting}
+            className={`flex items-center gap-1.5 text-[10px] font-bold transition-colors uppercase tracking-wider btn-hover ${
+              exported ? 'text-green-400' : exporting ? 'text-surface-600' : 'text-surface-400 hover:text-white'
+            }`}
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export Report
+            {exporting ? (
+              <>
+                <div className="w-3 h-3 rounded-full border border-surface-500 border-t-transparent animate-spin" />
+                Exporting...
+              </>
+            ) : exported ? (
+              <>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Saved
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export Report
+              </>
+            )}
           </button>
         </div>
         <div className="grid gap-2">
