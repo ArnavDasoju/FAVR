@@ -164,6 +164,24 @@ export interface WhatIfResult {
   complianceGaps: { framework: ComplianceFramework; vulnIds: string[] }[]
 }
 
+// ─── Data Freshness (from vuln-data-pipeline) ────────────────
+
+export interface DataSourceStatus {
+  name: string
+  lastQueried: number | null    // timestamp
+  available: boolean
+  entriesReturned: number
+  error?: string
+}
+
+export interface DataFreshness {
+  osv: DataSourceStatus
+  nvd: DataSourceStatus
+  ghsa: DataSourceStatus
+  kev: DataSourceStatus
+  epss: DataSourceStatus
+}
+
 // ─── Analysis Result (complete output) ────────────────────────
 
 export interface AnalysisResult {
@@ -182,6 +200,7 @@ export interface AnalysisResult {
     violations: { framework: ComplianceFramework; vulnIds: string[]; urgentCount: number }[]
     overallComplianceRisk: number  // 0-1
   }
+  dataFreshness: DataFreshness | null      // null if enrichment pipeline wasn't used
   timestamp: number
   engineVersion: string
 }

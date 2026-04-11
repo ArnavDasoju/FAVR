@@ -13,6 +13,7 @@ import { computeAllBlastRadii } from './blast-radius'
 import { buildSchedule } from './scheduler'
 import { computeComplianceSummary } from './compliance'
 import { fetchEpssScores, estimateEpssFromCvss } from './epss'
+import { enrichVulnerabilities, getFreshness, type DataFreshness, type PipelineConfig } from '../ingest/vuln-data-pipeline'
 
 const ENGINE_VERSION = '2.1.0'
 
@@ -25,38 +26,87 @@ export async function runAnalysis(input: {
   vulnerabilities: Vulnerability[]
   iterations?: number
   onProgress?: ProgressCallback
+  pipelineConfig?: PipelineConfig
 }): Promise<AnalysisResult> {
   const { services, dependencies, vulnerabilities, onProgress } = input
   const iterations = input.iterations ?? 500
 
-  // Phase 0: Enrich with real EPSS data from FIRST.org
-  onProgress?.({ phase: 'graph', progress: 0, message: 'Fetching real EPSS scores from FIRST.org...' })
+  // Phase 0: Multi-source CVE enrichment (EPSS + NVD + GHSA + KEV)
+  onProgress?.({ phase: 'graph', progress: 0, message: 'Enriching vulnerabilities from multiple data sources...' })
 
   const cveIds = vulnerabilities.filter(v => v.cveId.startsWith('CVE-')).map(v => v.cveId)
-  let epssSource = 'estimated'
+  let dataFreshness: DataFreshness | null = null
+
   if (cveIds.length > 0) {
     try {
-      const epssScores = await fetchEpssScores(cveIds)
-      let enriched = 0
+      // Run the full multi-source enrichment pipeline
+      const pipelineResult = await enrichVulnerabilities(
+        cveIds,
+        input.pipelineConfig ?? {},
+        (msg) => onProgress?.({ phase: 'graph', progress: 10, message: msg })
+      )
+
+      dataFreshness = pipelineResult.freshness
+
+      // Apply enriched data back to vulnerabilities
+      let enrichedCount = 0
+      let kevCount = 0
       for (const vuln of vulnerabilities) {
-        const epss = epssScores.get(vuln.cveId)
-        if (epss) {
-          vuln.epssScore = epss.epss
-          enriched++
-        } else if (vuln.epssScore === 0 || vuln.epssScore === undefined) {
-          // Only estimate if no EPSS was provided in the input data
+        const data = pipelineResult.enriched.get(vuln.cveId)
+        if (data) {
+          // Apply EPSS
+          if (data.epssScore > 0) {
+            vuln.epssScore = data.epssScore
+          }
+
+          // Apply normalized CVSS if higher confidence than OSV estimate
+          if (data.sources.includes('NVD') || data.sources.includes('GHSA')) {
+            vuln.cvssScore = data.cvssScore
+            vuln.severity = data.severity as any
+          }
+
+          // KEV = known exploited = massive priority boost
+          if (data.isKev) {
+            vuln.knownExploit = true
+            vuln.exploitProbability = Math.max(vuln.exploitProbability, 0.9)
+            kevCount++
+            // If CISA has a due date, set compliance deadline
+            if (data.kevDueDate) {
+              const dueDate = new Date(data.kevDueDate)
+              const daysUntil = Math.max(0, Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+              if (vuln.complianceDeadlineDays === null || daysUntil < vuln.complianceDeadlineDays) {
+                vuln.complianceDeadlineDays = daysUntil
+              }
+            }
+          }
+
+          enrichedCount++
+        }
+
+        // Fallback: estimate EPSS if still missing
+        if (!vuln.epssScore || vuln.epssScore === 0) {
           vuln.epssScore = estimateEpssFromCvss(vuln.cvssScore, vuln.knownExploit)
         }
       }
-      if (enriched > 0) {
-        epssSource = 'live'
-        onProgress?.({ phase: 'graph', progress: 20, message: `Enriched ${enriched}/${cveIds.length} CVEs with live EPSS data` })
-      } else {
-        onProgress?.({ phase: 'graph', progress: 20, message: 'No EPSS matches found, using estimates' })
-      }
-    } catch {
-      onProgress?.({ phase: 'graph', progress: 20, message: 'EPSS API unavailable, using estimates' })
-      // Fill in estimates for any missing EPSS scores
+
+      const sourceNames = [
+        'OSV',
+        dataFreshness.nvd.entriesReturned > 0 ? 'NVD' : null,
+        dataFreshness.ghsa.entriesReturned > 0 ? 'GHSA' : null,
+        dataFreshness.kev.entriesReturned > 0 ? 'KEV' : null,
+        dataFreshness.epss.entriesReturned > 0 ? 'EPSS' : null,
+      ].filter(Boolean)
+
+      onProgress?.({
+        phase: 'graph',
+        progress: 20,
+        message: `Enriched ${enrichedCount} CVEs from ${sourceNames.join(' + ')}${kevCount > 0 ? ` (${kevCount} on KEV!)` : ''}`
+      })
+    } catch (err) {
+      console.warn('[engine] Enrichment pipeline failed, using OSV data only:', err)
+      onProgress?.({ phase: 'graph', progress: 20, message: 'Enrichment pipeline unavailable, using OSV data only' })
+
+      // Fallback: estimate EPSS for all
       for (const vuln of vulnerabilities) {
         if (!vuln.epssScore) {
           vuln.epssScore = estimateEpssFromCvss(vuln.cvssScore, vuln.knownExploit)
@@ -70,6 +120,7 @@ export async function runAnalysis(input: {
 
   const graph = buildAttackGraph(services, dependencies, vulnerabilities)
 
+  const epssSource = dataFreshness?.epss.entriesReturned ? 'FIRST.org' : 'estimated'
   onProgress?.({ phase: 'graph', progress: 100, message: `Graph built: ${services.length} services, ${dependencies.length} deps, ${vulnerabilities.length} vulns (EPSS: ${epssSource})` })
 
   // Phase 2: Bayesian Risk Propagation (now with EPSS + compliance weighting)
@@ -161,6 +212,7 @@ export async function runAnalysis(input: {
     blastRadii,
     schedule,
     complianceSummary,
+    dataFreshness: dataFreshness ?? null,
     timestamp: Date.now(),
     engineVersion: ENGINE_VERSION
   }

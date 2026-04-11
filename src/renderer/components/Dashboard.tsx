@@ -649,6 +649,28 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
 
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState(false)
+  const [dataFreshness, setDataFreshness] = useState<Record<string, { name: string; lastQueried: number | null; available: boolean; entriesReturned: number; error?: string }> | null>(null)
+  const [clearingCache, setClearingCache] = useState(false)
+
+  // Load data freshness from result or IPC
+  useEffect(() => {
+    if (result?.dataFreshness) {
+      setDataFreshness(result.dataFreshness)
+    } else {
+      window.api.invoke('vuln:getFreshness').then((f: any) => {
+        if (f) setDataFreshness(f)
+      }).catch(() => {})
+    }
+  }, [result])
+
+  async function handleClearCache() {
+    setClearingCache(true)
+    try {
+      await window.api.invoke('vuln:clearCache')
+      setDataFreshness(null)
+    } catch { /* ignore */ }
+    setClearingCache(false)
+  }
 
   // ─── Fix-All session state ───────────────────────────────────
   const [fixPhase, setFixPhase] = useState<FixPhase>('idle')
@@ -804,6 +826,57 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
           {(scanStats.scanDurationMs ?? 0) > 0 && (
             <span className="text-[10px] text-surface-600">{((scanStats.scanDurationMs ?? 0) / 1000).toFixed(1)}s</span>
           )}
+        </div>
+      )}
+
+      {/* Data Freshness Indicator */}
+      {dataFreshness && (
+        <div className={`bg-surface-900 border border-surface-800 rounded-card p-3 mb-4 ${a('animate-slideUp')}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <svg className="w-3.5 h-3.5 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span className="text-[10px] font-bold text-surface-400 uppercase tracking-wider">Data Sources</span>
+            </div>
+            <button
+              onClick={handleClearCache}
+              disabled={clearingCache}
+              className="text-[9px] text-surface-600 hover:text-surface-300 transition-colors disabled:opacity-50"
+            >
+              {clearingCache ? 'Clearing...' : 'Clear Cache'}
+            </button>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            {Object.entries(dataFreshness).map(([key, src]) => {
+              const source = src as { name: string; lastQueried: number | null; available: boolean; entriesReturned: number; error?: string }
+              const age = source.lastQueried ? Date.now() - source.lastQueried : null
+              const ageText = age === null ? 'never'
+                : age < 60_000 ? 'just now'
+                : age < 3600_000 ? `${Math.round(age / 60_000)}m ago`
+                : age < 86400_000 ? `${Math.round(age / 3600_000)}h ago`
+                : `${Math.round(age / 86400_000)}d ago`
+              const isStale = age !== null && age > 7 * 86400_000
+              const hasData = source.entriesReturned > 0
+              const dotColor = !source.available || source.error ? 'bg-red-400'
+                : isStale ? 'bg-amber-400'
+                : hasData ? 'bg-green-400'
+                : 'bg-surface-600'
+              const textColor = !source.available || source.error ? 'text-red-400'
+                : isStale ? 'text-amber-400'
+                : hasData ? 'text-surface-300'
+                : 'text-surface-600'
+
+              return (
+                <div key={key} className="flex items-center gap-1.5" title={source.error ?? `${source.entriesReturned} entries`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                  <span className={`text-[10px] font-medium ${textColor}`}>{source.name}</span>
+                  <span className="text-[9px] text-surface-600 font-mono">{ageText}</span>
+                  {isStale && <span className="text-[8px] text-amber-400 font-bold">STALE</span>}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
