@@ -159,8 +159,7 @@ export default function Dashboard() {
     try {
       await window.api.invoke('analysis:run', {
         filePaths: uploadedFiles.length > 0 ? uploadedFiles : undefined,
-        codebasePath: mode === 'remediation' && codebasePath ? codebasePath : undefined,
-        iterations: 5000
+        codebasePath: mode === 'remediation' && codebasePath ? codebasePath : undefined
       })
     } catch (err) {
       console.error('Analysis failed:', err)
@@ -177,8 +176,7 @@ export default function Dashboard() {
     useAnalysisStore.getState().reset()
     try {
       const result = await window.api.invoke('analysis:analyzeCodebase', {
-        codebasePath,
-        iterations: 5000
+        codebasePath
       }) as { stats: typeof scanStats }
       if (result?.stats) setScanStats(result.stats)
     } catch (err) {
@@ -761,7 +759,7 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
     setRescanning(true)
     try {
       useAnalysisStore.getState().reset()
-      await window.api.invoke('analysis:analyzeCodebase', { codebasePath, iterations: 5000 })
+      await window.api.invoke('analysis:analyzeCodebase', { codebasePath })
       setFixPhase('idle')
       setFixVulns([])
     } catch (err) {

@@ -18,7 +18,7 @@ import type {
 } from './types'
 import { propagateRisk, computeTotalRiskFromScores } from './bayesian'
 
-const DEFAULT_ITERATIONS = 10000
+const DEFAULT_ITERATIONS = 500
 const PERTURBATION_RANGE = 0.2  // ±20%
 
 /**
@@ -39,9 +39,6 @@ export function runMonteCarlo(
   // Track how often each CVE appears at each position
   // positionCounts[position][vulnId] = count
   const positionCounts: Map<string, number>[] = Array.from({ length: n }, () => new Map())
-
-  // Track total risk curves per iteration
-  const allOptimalCurves: number[][] = []
 
   // Save original probabilities
   const originalProbs = new Map<string, number>()
@@ -69,10 +66,6 @@ export function runMonteCarlo(
       const vulnId = ordering[pos]
       positionCounts[pos].set(vulnId, (positionCounts[pos].get(vulnId) ?? 0) + 1)
     }
-
-    // Step 4: Compute risk curve for this ordering
-    const curve = computeRiskCurve(graph, ordering)
-    allOptimalCurves.push(curve)
 
     // Progress
     if (onProgress && iter % Math.max(1, Math.floor(iterations / 100)) === 0) {
@@ -124,45 +117,27 @@ export function runMonteCarlo(
 }
 
 /**
- * Greedy patch ordering: at each step, pick the CVE whose patching
- * results in the maximum total risk reduction.
+ * Marginal-contribution ordering: for each vuln, compute the real total-risk
+ * reduction from patching it alone, sort descending. O(N) propagation calls
+ * per iteration vs the old full-greedy's O(N²).
+ *
+ * This captures each vuln's true first-order marginal contribution (not an
+ * estimate), but skips the inner greedy that re-evaluates at every step.
+ * MC perturbation + position voting across iterations still converges on a
+ * stable ordering.
  */
 function greedyPatchOrder(graph: AttackGraph, openVulns: Vulnerability[]): string[] {
-  const order: string[] = []
-  const patched = new Set<string>()
-  const remaining = new Set(openVulns.map(v => v.id))
+  // Baseline: real total system risk with nothing patched (reflects perturbed exploit probs)
+  const baseline = computeRiskWithPatched(graph, new Set<string>())
 
-  while (remaining.size > 0) {
-    let bestVuln: string | null = null
-    let bestRiskAfter = Infinity
+  // For each vuln, the real reduction from patching it alone
+  const scored = openVulns.map(v => {
+    const riskAfter = computeRiskWithPatched(graph, new Set<string>([v.id]))
+    return { id: v.id, reduction: baseline - riskAfter }
+  })
 
-    for (const vulnId of remaining) {
-      // Simulate patching this one
-      const testPatched = new Set(patched)
-      testPatched.add(vulnId)
-
-      const risk = computeRiskWithPatched(graph, testPatched)
-
-      if (risk < bestRiskAfter) {
-        bestRiskAfter = risk
-        bestVuln = vulnId
-      }
-    }
-
-    if (bestVuln) {
-      order.push(bestVuln)
-      patched.add(bestVuln)
-      remaining.delete(bestVuln)
-    } else {
-      // Shouldn't happen, but handle gracefully
-      const next = remaining.values().next().value!
-      order.push(next)
-      patched.add(next)
-      remaining.delete(next)
-    }
-  }
-
-  return order
+  scored.sort((a, b) => b.reduction - a.reduction)
+  return scored.map(s => s.id)
 }
 
 /**
