@@ -37,6 +37,7 @@ export default function DependencyGraph() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+  const [d3Ready, setD3Ready] = useState(false)
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null)
 
   const toggleFullscreen = useCallback(() => {
@@ -345,6 +346,8 @@ export default function DependencyGraph() {
         .attr('y', d => ((d.source as GraphNode).y! + (d.target as GraphNode).y!) / 2)
 
       node.attr('transform', d => `translate(${d.x},${d.y})`)
+
+      if (!d3Ready) setD3Ready(true)
     })
 
     // Cleanup
@@ -431,9 +434,39 @@ export default function DependencyGraph() {
       >
         <svg
           ref={svgRef}
-          className="w-full h-full"
+          className={`w-full h-full transition-opacity duration-500 ${d3Ready ? 'opacity-100' : 'opacity-0'}`}
           style={{ background: isFullscreen ? '#09090B' : 'transparent' }}
         />
+
+        {/* Loading skeleton overlay */}
+        {!d3Ready && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative">
+                {[
+                  { x: 0, y: -30, d: 0 },
+                  { x: 28, y: -10, d: 100 },
+                  { x: 18, y: 22, d: 200 },
+                  { x: -18, y: 22, d: 300 },
+                  { x: -28, y: -10, d: 400 },
+                ].map((pos, i) => (
+                  <div
+                    key={i}
+                    className="absolute animate-shimmer rounded-full"
+                    style={{
+                      width: 24,
+                      height: 24,
+                      left: `calc(50% + ${pos.x}px - 12px)`,
+                      top: `calc(50% + ${pos.y}px - 12px)`,
+                      animationDelay: `${pos.d}ms`,
+                    }}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] text-surface-600 mt-10">Building graph...</span>
+            </div>
+          </div>
+        )}
 
         {/* Hover tooltip */}
         {hoveredService && (

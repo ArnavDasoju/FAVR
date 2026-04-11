@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useAnalysisStore } from '../../stores/analysisStore'
 
 const RISK_COLORS = [
@@ -14,7 +15,35 @@ function getRiskStyle(score: number) {
 
 export default function ServiceHeatmap() {
   const result = useAnalysisStore(s => s.result)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 80)
+    return () => clearTimeout(timer)
+  }, [])
+
   if (!result) return null
+
+  if (!mounted) {
+    return (
+      <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
+        <div className="animate-shimmer w-36 h-4 rounded-btn mb-1" />
+        <div className="animate-shimmer w-48 h-2 rounded-btn mb-4" />
+        <div className="flex flex-col gap-2">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-btn p-3">
+              <div className="animate-shimmer w-2 h-8 rounded-full shrink-0" style={{ animationDelay: `${i * 80}ms` }} />
+              <div className="flex-1">
+                <div className="animate-shimmer w-28 h-3 rounded-btn mb-1.5" style={{ animationDelay: `${i * 80}ms` }} />
+                <div className="animate-shimmer w-40 h-2 rounded-btn" style={{ animationDelay: `${i * 80}ms` }} />
+              </div>
+              <div className="animate-shimmer w-12 h-6 rounded-btn shrink-0" style={{ animationDelay: `${i * 80}ms` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-surface-900 border border-surface-800 rounded-card p-4">

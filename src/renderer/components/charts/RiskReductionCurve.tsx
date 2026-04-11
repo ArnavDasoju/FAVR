@@ -1,9 +1,19 @@
+import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts'
 import { useAnalysisStore } from '../../stores/analysisStore'
+import { ChartSkeleton } from '../Skeleton'
 
 export default function RiskReductionCurve() {
   const result = useAnalysisStore(s => s.result)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 100)
+    return () => clearTimeout(timer)
+  }, [])
+
   if (!result) return null
+  if (!mounted) return <ChartSkeleton height={280} title="Risk Reduction Curve" />
 
   const { optimalCurve, naiveCurve, optimalOrder } = result.simulation
   const vulnMap = new Map(result.graph.vulnerabilities.map(v => [v.id, v]))
