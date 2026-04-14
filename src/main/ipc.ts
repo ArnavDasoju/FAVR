@@ -21,6 +21,9 @@ import {
   loadScanResult, getLatestSnapshot, deleteScanResult, clearScanHistory
 } from './ingest/scan-history'
 import { getFreshness, clearVulnCache } from './ingest/vuln-data-pipeline'
+import { optimizeAgentAssignments } from './optimization/budget-optimizer'
+import { agentStatsTracker } from './optimization/agent-stats'
+import { WorkspaceSession, getActiveSession, setActiveSession } from './agents/workspace-session'
 
 // Store the latest analysis result for quick access
 let latestAnalysis: AnalysisResult | null = null
@@ -606,6 +609,156 @@ export function setupIpc(): void {
       const msg = err instanceof Error ? err.message : String(err)
       throw new Error(`Undo failed: ${msg}`)
     }
+  })
+
+  // ── Budget Optimizer & Agent Stats ─────────────────────────
+  ipcMain.handle('optimizer:preview', async (_event, data: { budget: number; maxConcurrent: number; preferFree: boolean }) => {
+    if (!latestAnalysis) throw new Error('Run a scan first')
+
+    const vulns = latestAnalysis.graph.vulnerabilities as unknown as import('./engine/types').Vulnerability[]
+    const order = latestAnalysis.simulation.optimalOrder
+    const stats = agentStatsTracker.getAllStats()
+    const models = modelRouter.getModels()
+
+    const result = optimizeAgentAssignments(
+      vulns,
+      order,
+      {
+        maxBudget: data.budget,
+        maxConcurrentAgents: data.maxConcurrent,
+        preferFree: data.preferFree
+      },
+      stats,
+      models
+    )
+
+    return result
+  })
+
+  ipcMain.handle('agentStats:getAll', async () => {
+    return agentStatsTracker.getAllStats()
+  })
+
+  ipcMain.handle('agentStats:getLeaderboard', async () => {
+    return agentStatsTracker.getLeaderboard()
+  })
+
+  ipcMain.handle('agentStats:getHistory', async (_event, model: string, limit?: number) => {
+    return agentStatsTracker.getHistory(model, limit)
+  })
+
+  ipcMain.handle('agentStats:reset', async () => {
+    agentStatsTracker.reset()
+    return { success: true }
+  })
+
+  // ── Remediation Workspace ─────────────────────────────────
+
+  ipcMain.handle('workspace:start', async (_event, data: {
+    codebasePath: string
+    budget: number
+    maxConcurrent: number
+    preferFree: boolean
+  }) => {
+    if (!latestAnalysis) throw new Error('Run a scan first')
+    if (!data.codebasePath) throw new Error('Codebase path required')
+    if (getActiveSession()?.getStatus() === 'running') {
+      throw new Error('A workspace session is already running — cancel it first')
+    }
+
+    const vulns = latestAnalysis.graph.vulnerabilities as unknown as Vulnerability[]
+    const services = latestAnalysis.graph.services as unknown as import('./engine/types').Service[]
+    const order = latestAnalysis.simulation.optimalOrder
+    const stats = agentStatsTracker.getAllStats()
+    const models = modelRouter.getModels()
+
+    // Run optimizer
+    const optimization = optimizeAgentAssignments(
+      vulns, order,
+      { maxBudget: data.budget, maxConcurrentAgents: data.maxConcurrent, preferFree: data.preferFree },
+      stats, models
+    )
+
+    if (optimization.assignments.length === 0) {
+      throw new Error('No vulnerabilities could be assigned within budget')
+    }
+
+    // Git safety: stash current working tree
+    fixSessionStash = null
+    try {
+      const porcelain = execSync('git status --porcelain', { cwd: data.codebasePath, encoding: 'utf-8' }).trim()
+      if (porcelain.length > 0) {
+        execSync('git stash push -u -m "favr-workspace-backup"', { cwd: data.codebasePath, encoding: 'utf-8' })
+        fixSessionStash = { cwd: data.codebasePath, created: true }
+      } else {
+        fixSessionStash = { cwd: data.codebasePath, created: false }
+      }
+    } catch (err) {
+      console.warn('[workspace] git not available — running without undo safety net:', err)
+    }
+
+    // Create and run session
+    const session = new WorkspaceSession({
+      codebasePath: data.codebasePath,
+      totalBudget: data.budget,
+      maxConcurrent: data.maxConcurrent,
+      assignments: optimization.assignments,
+      skippedVulns: optimization.skippedVulns.map(s => s.vulnId),
+      vulns,
+      services
+    })
+
+    setActiveSession(session)
+
+    // Run in background — don't block the IPC response
+    session.run().then(finalState => {
+      console.log(`[workspace] Session ${finalState.sessionId} complete: ${finalState.results.filter(r => r.success).length}/${finalState.results.length} succeeded, $${finalState.spent.toFixed(4)} spent`)
+    }).catch(err => {
+      console.error('[workspace] Session failed:', err)
+    })
+
+    return {
+      sessionId: session.getState().sessionId,
+      assignments: optimization.assignments,
+      totalEstimatedCost: optimization.totalEstimatedCost,
+      expectedFixRate: optimization.expectedFixRate,
+      skippedVulns: optimization.skippedVulns,
+      savingsVsNaive: optimization.savingsVsNaive
+    }
+  })
+
+  ipcMain.handle('workspace:pause', async () => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.pause()
+    return { sessionId: session.getState().sessionId, status: 'paused' }
+  })
+
+  ipcMain.handle('workspace:resume', async () => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.resume()
+    return { sessionId: session.getState().sessionId, status: 'running' }
+  })
+
+  ipcMain.handle('workspace:cancel', async () => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.cancel()
+    return { sessionId: session.getState().sessionId, status: 'cancelled' }
+  })
+
+  ipcMain.handle('workspace:retry', async (_event, data: { vulnId: string; model?: string }) => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.retryVuln(data.vulnId, data.model)
+    return { vulnId: data.vulnId }
+  })
+
+  ipcMain.handle('workspace:state', async () => {
+    const session = getActiveSession()
+    if (!session) return null
+    return session.getState()
   })
 
   // ── Documents ───────────────────────────────────────────────

@@ -4,7 +4,9 @@ import Dashboard from './components/Dashboard'
 import FlowsView from './components/FlowsView'
 import BudgetView from './components/BudgetView'
 import Settings from './components/Settings'
+import RemediationWorkspace from './components/RemediationWorkspace'
 import { useIpcListeners } from './hooks/useIpc'
+import { useWorkspaceStore } from './stores/workspaceStore'
 
 declare global {
   interface Window {
@@ -45,12 +47,14 @@ const VIEW_KEYS: Record<string, View> = {
   '1': 'dashboard',
   '2': 'vulnerabilities',
   '3': 'analysis',
-  '4': 'settings',
+  '4': 'workspace',
+  '5': 'settings',
 }
 
 export default function App() {
   useIpcListeners()
   const [activeView, setActiveView] = useState<View>('dashboard')
+  const [workspaceCodebasePath, setWorkspaceCodebasePath] = useState('')
 
   // Keyboard shortcuts: 1-4 to switch views
   useEffect(() => {
@@ -65,14 +69,23 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
 
+  // Allow Dashboard to navigate to the workspace
+  function openWorkspace(codebasePath: string) {
+    setWorkspaceCodebasePath(codebasePath)
+    useWorkspaceStore.getState().configure()
+    setActiveView('workspace')
+  }
+
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard />
+        return <Dashboard onOpenWorkspace={openWorkspace} />
       case 'vulnerabilities':
         return <FlowsView />
       case 'analysis':
         return <BudgetView />
+      case 'workspace':
+        return <RemediationWorkspace codebasePath={workspaceCodebasePath} onBack={() => setActiveView('dashboard')} />
       case 'settings':
         return <Settings />
     }

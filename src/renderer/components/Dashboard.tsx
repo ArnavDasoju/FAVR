@@ -82,7 +82,7 @@ function useCountUp(target: number, duration = 700): number {
   return value
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onOpenWorkspace }: { onOpenWorkspace?: (codebasePath: string) => void }) {
   const result = useAnalysisStore(s => s.result)
   const phase = useAnalysisStore(s => s.phase)
   const progress = useAnalysisStore(s => s.progress)
@@ -634,13 +634,14 @@ export default function Dashboard() {
       scanStats={scanStats}
       codebasePath={codebasePath}
       onExit={handleExitToHome}
+      onOpenWorkspace={onOpenWorkspace}
       animate={!hasSeenResults}
     />
   )
 }
 
 // ─── Results Dashboard (extracted for count-up hooks) ─────────
-function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scanStats, codebasePath, onExit, animate }: {
+function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scanStats, codebasePath, onExit, onOpenWorkspace, animate }: {
   result: NonNullable<ReturnType<typeof useAnalysisStore.getState>['result']>
   totalRisk: number
   vulnCount: number
@@ -648,6 +649,7 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
   scanStats: { servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[]; unresolvedPackages?: number; dockerImagesScanned?: number; isMonorepo?: boolean; scanDurationMs?: number } | null
   codebasePath: string
   onExit: () => void
+  onOpenWorkspace?: (codebasePath: string) => void
   animate: boolean
 }) {
   // Mark results as seen after first render
@@ -963,16 +965,29 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
             <span className="text-[9px] bg-surface-800 text-surface-400 px-2 py-0.5 rounded-full font-bold">FAVR Optimized</span>
           </div>
           <div className="flex items-center gap-3">
+            {onOpenWorkspace && (
+              <button
+                onClick={() => onOpenWorkspace(codebasePath)}
+                disabled={!codebasePath || vulnCount === 0}
+                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-btn bg-sage-500/15 border border-sage-500/40 text-sage-200 hover:bg-sage-500/25 hover:border-sage-500/60 transition-all btn-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                title={codebasePath ? 'Open Remediation Workspace with budget optimization' : 'Scan a codebase first'}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Workspace
+              </button>
+            )}
             <button
               onClick={handleFixAll}
               disabled={fixPhase === 'patching' || !codebasePath || vulnCount === 0}
               className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-btn bg-green-500/10 border border-green-500/40 text-green-300 hover:bg-green-500/20 hover:border-green-500/60 transition-all btn-hover disabled:opacity-40 disabled:cursor-not-allowed"
-              title={codebasePath ? 'Dispatch agents to patch every vulnerability in optimal order' : 'Scan a codebase first'}
+              title={codebasePath ? 'Quick fix all (sequential, no budget control)' : 'Scan a codebase first'}
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              {fixPhase === 'patching' ? 'Patching...' : 'Fix All with Agents'}
+              {fixPhase === 'patching' ? 'Patching...' : 'Quick Fix'}
             </button>
           <button
             onClick={handleExport}
