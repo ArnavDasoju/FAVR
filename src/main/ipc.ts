@@ -518,8 +518,9 @@ export function setupIpc(): void {
         .map(id => services.find(s => s.id === id)?.name)
         .filter((n): n is string => !!n)
 
-      // Router picks cheapest capable model for this vuln's complexity
-      const model = modelRouter.route('general', vuln.complexity)
+      // Classify vuln and route to the best-fit agent
+      const routing = modelRouter.routeVuln(vuln)
+      const model = routing.model
       const prompt = buildFixPrompt(vuln, serviceNames)
 
       const subtask: QueuedSubtask = {
@@ -553,7 +554,11 @@ export function setupIpc(): void {
         patchedVersion: vuln.patchedVersion,
         severity: vuln.severity,
         complexity: vuln.complexity,
-        model
+        model,
+        displayName: routing.displayName,
+        provider: routing.provider,
+        taskType: routing.taskType,
+        reasoning: routing.reasoning
       })
 
       try {
