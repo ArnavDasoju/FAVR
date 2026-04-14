@@ -18,6 +18,10 @@ interface FixVulnRow {
   severity: string
   complexity: 'low' | 'medium' | 'high'
   model: string
+  displayName: string
+  provider: string
+  taskType: string
+  reasoning: string
   status: 'pending' | 'running' | 'done' | 'failed'
   agentId: string | null
   changedFiles: string[]
@@ -93,7 +97,8 @@ export default function Dashboard({ onOpenWorkspace }: { onOpenWorkspace?: (code
   const hasSeenResults = useAnalysisStore(s => s.hasSeenResults)
 
   const uploadedFiles = useAnalysisStore(s => s.uploadedFiles)
-  const [codebasePath, setCodebasePath] = useState('')
+  const codebasePath = useAnalysisStore(s => s.codebasePath)
+  const setCodebasePath = useAnalysisStore(s => s.setCodebasePath)
   const [loading, setLoading] = useState(false)
   const [scanStats, setScanStats] = useState<{ servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[]; unresolvedPackages?: number; dockerImagesScanned?: number; isMonorepo?: boolean; scanDurationMs?: number } | null>(null)
   const [riskModel, setRiskModel] = useState<'conservative' | 'balanced' | 'aggressive'>('balanced')
@@ -709,13 +714,15 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
       const d = data as {
         index: number; cveId: string; title: string; affectedPackage: string
         patchedVersion: string; severity: string; complexity: 'low' | 'medium' | 'high'; model: string
+        displayName?: string; provider?: string; taskType?: string; reasoning?: string
       }
       setFixVulns(prev => {
         const next = [...prev]
         while (next.length <= d.index) {
           next.push({
             index: next.length, cveId: '', title: '', affectedPackage: '', patchedVersion: '',
-            severity: 'low', complexity: 'low', model: '', status: 'pending',
+            severity: 'low', complexity: 'low', model: '', displayName: '', provider: '',
+            taskType: '', reasoning: '', status: 'pending',
             agentId: null, changedFiles: [], error: null
           })
         }
@@ -729,6 +736,10 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
           severity: d.severity,
           complexity: d.complexity,
           model: d.model,
+          displayName: d.displayName ?? d.model.split('/').pop() ?? d.model,
+          provider: d.provider ?? '',
+          taskType: d.taskType ?? '',
+          reasoning: d.reasoning ?? '',
           status: 'running'
         }
         return next
@@ -1277,7 +1288,26 @@ function FixAllPanel({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[9px] font-mono text-surface-500">{v.model.split('/').pop()}</span>
+                  {v.taskType && (
+                    <span className={`text-[8px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded-full border ${
+                      v.taskType === 'critical-exploit' ? 'text-red-300 border-red-500/50 bg-red-500/10' :
+                      v.taskType === 'security-refactor' ? 'text-orange-300 border-orange-500/50 bg-orange-500/10' :
+                      v.taskType === 'breaking-upgrade' ? 'text-purple-300 border-purple-500/50 bg-purple-500/10' :
+                      v.taskType === 'deep-analysis' ? 'text-cyan-300 border-cyan-500/50 bg-cyan-500/10' :
+                      v.taskType === 'multi-service-patch' ? 'text-pink-300 border-pink-500/50 bg-pink-500/10' :
+                      v.taskType === 'compliance-patch' ? 'text-yellow-300 border-yellow-500/50 bg-yellow-500/10' :
+                      v.taskType === 'config-hardening' ? 'text-teal-300 border-teal-500/50 bg-teal-500/10' :
+                      'text-surface-400 border-surface-600 bg-surface-800'
+                    }`}>
+                      {v.taskType.replace(/-/g, ' ')}
+                    </span>
+                  )}
+                  <span className="text-[9px] font-bold text-indigo-300" title={v.reasoning || v.model}>
+                    {v.displayName || v.model.split('/').pop()}
+                  </span>
+                  {v.provider && (
+                    <span className="text-[8px] text-surface-600">{v.provider}</span>
+                  )}
                   {v.status === 'running' && (
                     <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
                   )}
@@ -1297,6 +1327,9 @@ function FixAllPanel({
                 </div>
               </div>
               <div className="text-[10px] text-surface-500 font-mono truncate mb-1">{v.cveId} — {v.title}</div>
+              {v.reasoning && v.status === 'running' && (
+                <div className="text-[9px] text-surface-500 italic truncate mb-1">{v.reasoning}</div>
+              )}
 
               {/* Live output lines from the agent */}
               {lastLines.length > 0 && v.status === 'running' && (

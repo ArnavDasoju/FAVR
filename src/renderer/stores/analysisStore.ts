@@ -26,6 +26,9 @@ interface AnalysisStore {
   // Document paths
   uploadedFiles: string[]
 
+  // Codebase path (persists through scan → results transition)
+  codebasePath: string
+
   // Actions
   setResult: (result: FavrAnalysisResult) => void
   setProgress: (progress: FavrAnalysisProgress) => void
@@ -36,6 +39,7 @@ interface AnalysisStore {
   selectService: (id: string | null) => void
   selectPareto: (id: string | null) => void
   setUploadedFiles: (files: string[]) => void
+  setCodebasePath: (path: string) => void
   reset: () => void
 
   // Computed helpers
@@ -57,6 +61,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   selectedServiceId: null,
   selectedParetoId: null,
   uploadedFiles: [],
+  codebasePath: '',
 
   setResult: (result) => set({ result, phase: 'complete', progress: 100, error: null, hasSeenResults: false }),
   markResultsSeen: () => set({ hasSeenResults: true }),
@@ -67,6 +72,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   selectService: (id) => set({ selectedServiceId: id }),
   selectPareto: (id) => set({ selectedParetoId: id }),
   setUploadedFiles: (files) => set({ uploadedFiles: files }),
+  setCodebasePath: (path) => set({ codebasePath: path }),
   reset: () => set({ result: null, phase: 'idle', progress: 0, message: '', error: null, hasSeenResults: false }),
 
   getVulnById: (id) => get().result?.graph.vulnerabilities.find(v => v.id === id),
