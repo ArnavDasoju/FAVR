@@ -12,7 +12,7 @@ import type {
   AttackGraph, WhatIfConstraints, WhatIfResult,
   ComplianceFramework, Vulnerability
 } from './types'
-import { propagateRisk, computeTotalRiskFromScores } from './bayesian'
+import { propagateRisk, computeTotalRiskFromScores, effectiveExploitProb } from './bayesian'
 
 /**
  * Run a what-if scenario: given constraints, which vulns can we patch
@@ -80,11 +80,7 @@ export function runWhatIf(
     if (remainingVulns.length === 0) {
       service.baseCompromiseProbability = 0
     } else {
-      const survival = remainingVulns.reduce((acc, v) => {
-        const epss = v.epssScore ?? v.exploitProbability
-        const effective = 0.6 * epss + 0.4 * v.exploitProbability
-        return acc * (1 - effective)
-      }, 1)
+      const survival = remainingVulns.reduce((acc, v) => acc * (1 - effectiveExploitProb(v)), 1)
       service.baseCompromiseProbability = 1 - survival
     }
   }

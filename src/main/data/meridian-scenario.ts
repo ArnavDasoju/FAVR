@@ -156,6 +156,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'maintenance-window', description: 'Payment API requires Saturday 2AM-6AM maintenance window' }
     ],
     knownExploit: true,
+    inKev: true,
+    attackVector: 'network',
+    hasPublicExploit: true,
     complianceViolations: ['PCI-DSS', 'SOX'],
     complianceDeadlineDays: 7
   },
@@ -181,6 +184,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'compliance', description: 'PCI-DSS critical patch' }
     ],
     knownExploit: true,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: true,
     complianceViolations: ['PCI-DSS'],
     complianceDeadlineDays: 14
   },
@@ -205,6 +211,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'compliance', description: 'Auth Service downtime requires coordinated restart of all dependent services' }
     ],
     knownExploit: true,
+    inKev: true,
+    attackVector: 'network',
+    hasPublicExploit: true,
     complianceViolations: ['PCI-DSS', 'HIPAA'],
     complianceDeadlineDays: 7
   },
@@ -230,6 +239,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'team-capacity', description: 'DevOps team of 3 needed for container infrastructure changes' }
     ],
     knownExploit: true,
+    inKev: true,
+    attackVector: 'local',
+    hasPublicExploit: true,
     complianceViolations: ['PCI-DSS', 'SOX', 'HIPAA'],
     complianceDeadlineDays: 14
   },
@@ -255,6 +267,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: false,
     complianceViolations: [],
     complianceDeadlineDays: null
   },
@@ -277,6 +292,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: true,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: true,
     complianceViolations: ['GDPR'],
     complianceDeadlineDays: 30
   },
@@ -301,6 +319,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'dependency', description: 'Next.js upgrade requires testing all server-side rendered pages' }
     ],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: false,
     complianceViolations: ['SOC2'],
     complianceDeadlineDays: 30
   },
@@ -325,6 +346,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'dependency', description: 'nginx config changes require validation of reverse proxy rules' }
     ],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: false,
     complianceViolations: [],
     complianceDeadlineDays: null
   },
@@ -350,6 +374,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: false,
     complianceViolations: ['SOC2'],
     complianceDeadlineDays: 60
   },
@@ -372,6 +399,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: false,
     complianceViolations: [],
     complianceDeadlineDays: null
   },
@@ -394,6 +424,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'adjacent',
+    hasPublicExploit: false,
     complianceViolations: [],
     complianceDeadlineDays: null
   },
@@ -419,6 +452,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
       { type: 'compliance', description: 'PCI-DSS requires tested backup before database upgrades' }
     ],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'local',
+    hasPublicExploit: false,
     complianceViolations: ['PCI-DSS', 'HIPAA'],
     complianceDeadlineDays: 30
   },
@@ -444,6 +480,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'adjacent',
+    hasPublicExploit: false,
     complianceViolations: ['GDPR'],
     complianceDeadlineDays: 90
   },
@@ -466,6 +505,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'local',
+    hasPublicExploit: false,
     complianceViolations: ['HIPAA', 'SOX'],
     complianceDeadlineDays: 60
   },
@@ -488,6 +530,9 @@ export const MERIDIAN_VULNERABILITIES: Vulnerability[] = [
     patchOrder: null,
     constraints: [],
     knownExploit: false,
+    inKev: false,
+    attackVector: 'network',
+    hasPublicExploit: false,
     complianceViolations: ['PCI-DSS'],
     complianceDeadlineDays: 90
   }

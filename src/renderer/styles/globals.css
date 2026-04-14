@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -12,41 +14,63 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background: #0a0a0a;
-  color: #fafafa;
+  color: #273024;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
 }
 
-/* Draggable titlebar region */
-.titlebar-drag {
-  -webkit-app-region: drag;
+/* Warm cream base — parchment gradient with faint sage fog in the corners
+   and a paper-grain texture for warmth. */
+body {
+  background:
+    radial-gradient(ellipse 75% 55% at 50% -5%, rgba(130,169,104,0.12) 0%, rgba(248,242,225,0) 60%),
+    radial-gradient(ellipse 65% 45% at 90% 110%, rgba(64,89,53,0.08) 0%, rgba(248,242,225,0) 65%),
+    linear-gradient(180deg,#fcf8ed 0%,#f5edd4 100%);
+  background-attachment: fixed;
 }
 
-.titlebar-no-drag {
-  -webkit-app-region: no-drag;
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(64,89,53,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.55;
+  z-index: 0;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
+#root { position: relative; z-index: 1; }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Re-skin legacy `text-white` / `bg-white` to sit well on cream.
+   `text-white` becomes deep sage ink, `bg-white` becomes warm cream. */
+.text-white { color: #273024 !important; }
+.bg-white { background-color: #fcf8ed !important; }
+.border-white { border-color: #d9cba6 !important; }
 
+/* Titlebar */
+.titlebar-drag { -webkit-app-region: drag; }
+.titlebar-no-drag { -webkit-app-region: no-drag; }
+
+/* Scrollbar — sage on cream */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #404040;
-  border-radius: 3px;
+  background: linear-gradient(180deg,#c4d8b1,#82a968);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #525252;
+  background: linear-gradient(180deg,#82a968,#527141);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
-/* Agent card terminal output */
+::selection { background: rgba(130,169,104,0.32); color: #273024; }
+
 .terminal-output {
   font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
   font-size: 11px;
@@ -55,93 +79,75 @@ html, body, #root {
   word-break: break-all;
 }
 
+/* ── Display type for hero numbers / titles ─────────────── */
+.font-display {
+  font-family: 'Fraunces', 'Inter', serif;
+  font-feature-settings: 'ss01','ss02';
+  letter-spacing: -0.02em;
+}
+
 /* ── Animations ────────────────────────────────────────── */
 
-/* Fade in from transparent */
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
-
-/* Slide up from below + fade */
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
-/* Scale in from slightly smaller */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  to   { opacity: 1; transform: scale(1); }
 }
-
-/* Glow pulse for critical indicators */
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-  50% { box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.25); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(196,69,54,0); }
+  50%      { box-shadow: 0 0 14px 2px rgba(196,69,54,0.35); }
 }
-
-/* Number glow for key metrics */
 @keyframes numberGlow {
   0%, 100% { text-shadow: 0 0 0 transparent; }
-  50% { text-shadow: 0 0 16px currentColor; }
+  50%      { text-shadow: 0 0 18px currentColor; }
 }
-
-/* Shimmer for loading skeletons */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
+  0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-
-/* Progress bar animation */
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  50%      { opacity: 0.6; }
 }
-
-/* Status dot */
 @keyframes blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  50%      { opacity: 0.3; }
+}
+@keyframes sagePulse {
+  0%, 100% { transform: scale(1);    opacity: 0.45; }
+  50%      { transform: scale(1.18); opacity: 0.08; }
+}
+@keyframes flowDash {
+  to { stroke-dashoffset: -40; }
 }
 
 /* ── Animation utility classes ─────────────────────────── */
 
-.animate-fadeIn {
-  animation: fadeIn 300ms ease-out both;
-}
-
-.animate-slideUp {
-  animation: slideUp 350ms ease-out both;
-}
-
-.animate-scaleIn {
-  animation: scaleIn 250ms ease-out both;
-}
-
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s ease-in-out infinite;
-}
-
-.status-blink {
-  animation: blink 1.5s ease-in-out infinite;
-}
-
-.animate-pulseGlow {
-  animation: pulseGlow 2.5s ease-in-out infinite;
-}
-
-.animate-numberGlow {
-  animation: numberGlow 3s ease-in-out infinite;
-}
-
+.animate-fadeIn        { animation: fadeIn 300ms ease-out both; }
+.animate-slideUp       { animation: slideUp 350ms ease-out both; }
+.animate-slideInRight  { animation: slideInRight 350ms cubic-bezier(.2,.8,.2,1) both; }
+.animate-scaleIn       { animation: scaleIn 250ms ease-out both; }
+.animate-pulse-subtle  { animation: pulse-subtle 2s ease-in-out infinite; }
+.status-blink          { animation: blink 1.5s ease-in-out infinite; }
+.animate-pulseGlow     { animation: pulseGlow 2.5s ease-in-out infinite; }
+.animate-numberGlow    { animation: numberGlow 3s ease-in-out infinite; }
 .animate-shimmer {
-  background: linear-gradient(90deg, #18181B 25%, #27272A 50%, #18181B 75%);
+  background: linear-gradient(90deg,#f2ead3 25%,#e9dfc0 50%,#f2ead3 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
-/* Stagger delay utilities (use with animate-slideUp or animate-fadeIn) */
 .stagger-1 { animation-delay: 0ms; }
 .stagger-2 { animation-delay: 60ms; }
 .stagger-3 { animation-delay: 120ms; }
@@ -151,47 +157,60 @@ html, body, #root {
 .stagger-7 { animation-delay: 360ms; }
 .stagger-8 { animation-delay: 420ms; }
 
-/* ── View transition ───────────────────────────────────── */
-
-.view-enter {
-  animation: fadeIn 200ms ease-out;
-}
+.view-enter { animation: fadeIn 200ms ease-out; }
 
 /* ── Hover micro-interactions ──────────────────────────── */
 
 .card-hover {
-  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+  transition: transform 200ms cubic-bezier(.2,.7,.2,1),
+              box-shadow 200ms ease-out,
+              border-color 200ms ease-out;
 }
-
 .card-hover:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  border-color: #52525B;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px -16px rgba(64,89,53,0.28),
+              0 0 0 1px rgba(130,169,104,0.25);
+  border-color: rgba(130,169,104,0.4);
 }
 
 .btn-hover {
-  transition: transform 100ms ease-out, background-color 150ms ease-out, color 150ms ease-out;
+  transition: transform 100ms ease-out, background-color 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out;
 }
+.btn-hover:hover  { transform: scale(1.02); }
+.btn-hover:active { transform: scale(0.98); }
 
-.btn-hover:hover {
-  transform: scale(1.02);
-}
-
-.btn-hover:active {
-  transform: scale(0.98);
-}
-
-/* ── Focus ring for accessibility ─────────────────────── */
-
+/* ── Focus ring ───────────────────────────────────────── */
 .focus-ring:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline: 2px solid rgba(106,143,84,0.55);
   outline-offset: 2px;
 }
 
 /* ── Shared input style ────────────────────────────────── */
-
 .input-field {
-  @apply bg-surface-950 border border-surface-800 rounded-input px-3 py-2.5
-    text-sm text-white placeholder:text-surface-600
-    focus:outline-none focus:border-surface-500 transition-colors w-full;
+  @apply bg-cream-50 border border-cream-400 rounded-input px-3 py-2.5
+    text-sm text-white placeholder:text-surface-500
+    focus:outline-none focus:border-sage-500 focus:shadow-sage-glow transition-all w-full;
+}
+
+/* ── Glass / cream card variant ─────────────────────────── */
+.glass-card {
+  background: linear-gradient(180deg, rgba(252,248,237,0.92) 0%, rgba(242,234,211,0.92) 100%);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  border: 1px solid rgba(130,169,104,0.22);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 18px 40px -24px rgba(64,89,53,0.3);
+}
+
+.sage-chip {
+  background: linear-gradient(135deg, rgba(130,169,104,0.14), rgba(64,89,53,0.08));
+  border: 1px solid rgba(130,169,104,0.32);
+  color: #405935;
+}
+
+/* Graph link with animated flow */
+.graph-flow {
+  stroke-dasharray: 6 10;
+  animation: flowDash 1.6s linear infinite;
 }

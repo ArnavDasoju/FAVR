@@ -20,6 +20,9 @@ export function generateReport(result: AnalysisResult): string {
   const totalRiskBefore = Math.round(simulation.totalRiskBefore * 100)
   const totalRiskAfter = Math.round(simulation.totalRiskAfter * 100)
   const reduction = Math.round(simulation.riskReduction)
+  const rc = simulation.riskConfidence
+  const riskCIBefore = rc ? `${Math.round(rc.lowerBefore * 100)}–${Math.round(rc.upperBefore * 100)}%` : ''
+  const riskCIAfter = rc ? `${Math.round(rc.lowerAfter * 100)}–${Math.round(rc.upperAfter * 100)}%` : ''
   const openVulns = graph.vulnerabilities.filter(v => v.status === 'open')
   const totalCost = openVulns.reduce((s, v) => s + v.remediationCost, 0)
   const totalDowntime = openVulns.reduce((s, v) => s + v.remediationDowntime, 0)
@@ -589,6 +592,7 @@ ${urgentCompliance > 0 ? `
         <text x="${gaugeSize / 2}" y="${gaugeSize / 2 + 14}" text-anchor="middle" fill="${riskColor}" font-size="10" font-weight="700" font-family="Inter, sans-serif" transform="rotate(90, ${gaugeSize / 2}, ${gaugeSize / 2})">${riskGrade}</text>
       </svg>
       <div class="gauge-label">System Risk</div>
+      ${riskCIBefore ? `<div style="font-size:9px;color:#71717a;font-family:'JetBrains Mono',monospace;margin-top:4px">${riskCIBefore} CI</div>` : ''}
     </div>
     <div class="stats-grid">
       <div class="stat-card">
@@ -628,8 +632,8 @@ ${urgentCompliance > 0 ? `
     This analysis identified <strong>${openVulns.length} open vulnerabilities</strong>
     across <strong>${graph.services.length} services</strong> with <strong>${graph.dependencies.length} dependency relationships</strong>.
     ${criticalCount > 0 ? `<strong style="color:var(--red)">${criticalCount} critical</strong> and <strong style="color:var(--orange)">${highCount} high</strong> severity vulnerabilities require immediate attention.` : 'No critical vulnerabilities were found.'}
-    Full remediation reduces system risk from <strong style="color:var(--red)">${totalRiskBefore}%</strong> to
-    <strong style="color:var(--green)">${totalRiskAfter}%</strong> — a <strong>${reduction}%</strong> reduction.
+    Full remediation reduces system risk from <strong style="color:var(--red)">${totalRiskBefore}%</strong>${riskCIBefore ? ` <span style="font-size:11px;color:#71717a">(${riskCIBefore})</span>` : ''} to
+    <strong style="color:var(--green)">${totalRiskAfter}%</strong>${riskCIAfter ? ` <span style="font-size:11px;color:#71717a">(${riskCIAfter})</span>` : ''} — a <strong>${reduction}%</strong> reduction.
     ${urgentCompliance > 0 ? `<br><span style="color:var(--purple)"><strong>${urgentCompliance} compliance deadline${urgentCompliance !== 1 ? 's' : ''} within 14 days</strong> require prioritized action.</span>` : ''}
   </div>
 

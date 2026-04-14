@@ -16,10 +16,10 @@ import type {
   AttackGraph, Service, Dependency, Vulnerability,
   SimulationResult, ConfidenceInterval
 } from './types'
-import { propagateRisk, computeTotalRiskFromScores } from './bayesian'
+import { propagateRisk, computeTotalRiskFromScores, effectiveExploitProb } from './bayesian'
+import { getCalibration } from './calibration'
 
 const DEFAULT_ITERATIONS = 500
-const PERTURBATION_RANGE = 0.2  // ±20%
 
 /**
  * Run Monte Carlo simulation to find optimal patch ordering.
@@ -40,6 +40,9 @@ export function runMonteCarlo(
   // positionCounts[position][vulnId] = count
   const positionCounts: Map<string, number>[] = Array.from({ length: n }, () => new Map())
 
+  // Collect per-iteration baseline risks for confidence bands
+  const iterationBaselines: number[] = []
+
   // Save original probabilities
   const originalProbs = new Map<string, number>()
   for (const v of openVulns) {
@@ -51,15 +54,36 @@ export function runMonteCarlo(
   }
 
   for (let iter = 0; iter < iterations; iter++) {
-    // Step 1: Perturb exploit probabilities
+    // Step 1: Perturb exploit probabilities with exploitability context.
+    // High-confidence threats (public exploit + KEV + remote) get narrower, higher distributions.
+    // Unknown/low-confidence threats get wider uncertainty ranges.
+    const cal = getCalibration()
     for (const vuln of openVulns) {
       const base = originalProbs.get(vuln.id)!
-      const noise = (Math.random() * 2 - 1) * PERTURBATION_RANGE  // uniform [-0.2, 0.2]
-      vuln.exploitProbability = clamp(base + base * noise, 0.01, 0.99)
+
+      // Compute exploitability multiplier from real-world context
+      let multiplier = 1.0
+      if (vuln.hasPublicExploit || vuln.knownExploit) multiplier *= cal.knownExploitMultiplier
+      if (vuln.inKev) multiplier *= cal.kevMultiplier
+      if (vuln.attackVector === 'network') multiplier *= cal.remoteExploitMultiplier
+
+      // High-confidence threats: narrow perturbation, biased upward
+      // Low-confidence: wider perturbation, centered
+      const isHighConfidence = multiplier > 2.0
+      const range = isHighConfidence
+        ? cal.perturbationRange * 0.5  // tighter band for well-known threats
+        : cal.perturbationRange
+
+      const noise = (Math.random() * 2 - 1) * range
+      // Apply multiplier to base, then add noise
+      const boosted = Math.min(base * Math.sqrt(multiplier), 0.98)
+      const floor = isHighConfidence ? cal.perturbationFloorHighConfidence : cal.minExploitProbability
+      vuln.exploitProbability = clamp(boosted + boosted * noise, floor, 0.99)
     }
 
-    // Step 2: Greedy patch ordering
-    const ordering = greedyPatchOrder(graph, openVulns)
+    // Step 2: Greedy patch ordering (also returns baseline risk for confidence bands)
+    const { ordering, baseline } = greedyPatchOrder(graph, openVulns)
+    iterationBaselines.push(baseline)
 
     // Step 3: Record positions
     for (let pos = 0; pos < ordering.length; pos++) {
@@ -102,6 +126,12 @@ export function runMonteCarlo(
   const totalRiskBefore = optimalCurve[0]
   const totalRiskAfter = optimalCurve[optimalCurve.length - 1]
 
+  // Compute risk confidence bands from per-iteration baselines + optimal curve
+  const cal = getCalibration()
+  const riskConfidence = computeRiskConfidenceFromBaselines(
+    iterationBaselines, optimalCurve, cal.confidenceLower, cal.confidenceUpper
+  )
+
   return {
     optimalOrder,
     naiveOrder,
@@ -112,7 +142,8 @@ export function runMonteCarlo(
     totalRiskAfter,
     riskReduction: totalRiskBefore > 0 ? ((totalRiskBefore - totalRiskAfter) / totalRiskBefore) * 100 : 0,
     iterations,
-    convergenceScore
+    convergenceScore,
+    riskConfidence
   }
 }
 
@@ -126,7 +157,7 @@ export function runMonteCarlo(
  * MC perturbation + position voting across iterations still converges on a
  * stable ordering.
  */
-function greedyPatchOrder(graph: AttackGraph, openVulns: Vulnerability[]): string[] {
+function greedyPatchOrder(graph: AttackGraph, openVulns: Vulnerability[]): { ordering: string[]; baseline: number } {
   // Baseline: real total system risk with nothing patched (reflects perturbed exploit probs)
   const baseline = computeRiskWithPatched(graph, new Set<string>())
 
@@ -137,14 +168,14 @@ function greedyPatchOrder(graph: AttackGraph, openVulns: Vulnerability[]): strin
   })
 
   scored.sort((a, b) => b.reduction - a.reduction)
-  return scored.map(s => s.id)
+  return { ordering: scored.map(s => s.id), baseline }
 }
 
 /**
  * Compute total system risk with a set of vulnerabilities marked as patched.
  */
 function computeRiskWithPatched(graph: AttackGraph, patchedIds: Set<string>): number {
-  // Recompute base probabilities with patched vulns removed
+  // Recompute base probabilities with patched vulns removed, using EPSS-weighted blend
   for (const service of graph.services) {
     const openVulns = graph.vulnerabilities.filter(v =>
       v.affectedServiceIds.includes(service.id) &&
@@ -154,7 +185,7 @@ function computeRiskWithPatched(graph: AttackGraph, patchedIds: Set<string>): nu
     if (openVulns.length === 0) {
       service.baseCompromiseProbability = 0
     } else {
-      const survival = openVulns.reduce((acc, v) => acc * (1 - v.exploitProbability), 1)
+      const survival = openVulns.reduce((acc, v) => acc * (1 - effectiveExploitProb(v)), 1)
       service.baseCompromiseProbability = 1 - survival
     }
   }
@@ -265,6 +296,58 @@ function buildConfidenceIntervals(
   })
 }
 
+/**
+ * Compute confidence bands from per-iteration baseline risks and the optimal risk curve.
+ *
+ * The marginal-contribution algorithm doesn't track full per-iteration curves (too expensive).
+ * Instead, we collect each iteration's baseline risk (before patching) under perturbed
+ * probabilities, then scale the optimal curve proportionally to derive confidence bands.
+ */
+function computeRiskConfidenceFromBaselines(
+  baselines: number[],
+  optimalCurve: number[],
+  lowerPct: number,
+  upperPct: number
+): SimulationResult['riskConfidence'] {
+  if (baselines.length === 0 || optimalCurve.length === 0) {
+    return {
+      meanBefore: 0, lowerBefore: 0, upperBefore: 0,
+      meanAfter: 0, lowerAfter: 0, upperAfter: 0,
+      curveBands: [[0, 0, 0]]
+    }
+  }
+
+  const sorted = [...baselines].sort((a, b) => a - b)
+  const n = sorted.length
+  const lowerBefore = sorted[Math.floor(n * lowerPct)] ?? sorted[0]
+  const upperBefore = sorted[Math.min(Math.floor(n * upperPct), n - 1)] ?? sorted[n - 1]
+  const meanBefore = sorted.reduce((s, v) => s + v, 0) / n
+
+  // The optimal curve starts at the deterministic baseline (optimalCurve[0]) and
+  // ends near zero. Scale each step proportionally by the ratio of percentile
+  // baseline to the deterministic baseline.
+  const deterministicBaseline = optimalCurve[0] || 1
+  const lowerScale = lowerBefore / deterministicBaseline
+  const upperScale = upperBefore / deterministicBaseline
+
+  const curveBands: [number, number, number][] = optimalCurve.map(risk => {
+    const meanRisk = risk * (meanBefore / deterministicBaseline)
+    return [risk * lowerScale, meanRisk, risk * upperScale]
+  })
+
+  const last = curveBands[curveBands.length - 1]
+
+  return {
+    meanBefore,
+    lowerBefore,
+    upperBefore,
+    meanAfter: last[1],
+    lowerAfter: last[0],
+    upperAfter: last[2],
+    curveBands
+  }
+}
+
 function emptyResult(): SimulationResult {
   return {
     optimalOrder: [],
@@ -276,7 +359,12 @@ function emptyResult(): SimulationResult {
     totalRiskAfter: 0,
     riskReduction: 0,
     iterations: 0,
-    convergenceScore: 1
+    convergenceScore: 1,
+    riskConfidence: {
+      meanBefore: 0, lowerBefore: 0, upperBefore: 0,
+      meanAfter: 0, lowerAfter: 0, upperAfter: 0,
+      curveBands: [[0, 0, 0]]
+    }
   }
 }
 

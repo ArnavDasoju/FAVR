@@ -172,6 +172,9 @@ export interface FavrVulnerability {
   status: 'open' | 'in-progress' | 'patched' | 'verified'
   patchOrder: number | null
   knownExploit: boolean
+  inKev: boolean
+  attackVector: 'network' | 'adjacent' | 'local' | 'physical' | 'unknown'
+  hasPublicExploit: boolean
   complianceViolations: ComplianceFramework[]
   complianceDeadlineDays: number | null
 }
@@ -200,6 +203,15 @@ export interface FavrSimulationResult {
     frequency: number
     alternatives: { cveId: string; frequency: number }[]
   }[]
+  riskConfidence?: {
+    meanBefore: number
+    lowerBefore: number
+    upperBefore: number
+    meanAfter: number
+    lowerAfter: number
+    upperAfter: number
+    curveBands: [number, number, number][]
+  }
 }
 
 export interface FavrParetoSolution {
@@ -285,4 +297,58 @@ export interface FavrAnalysisProgress {
   phase: AnalysisPhase
   progress: number
   message: string
+}
+
+// ─── Remediation Workspace Types ─────────────────────────────
+
+export interface FavrBudgetConstraints {
+  maxBudget: number
+  maxConcurrentAgents: number
+  preferFree: boolean
+}
+
+export interface FavrAgentAssignment {
+  vulnId: string
+  cveId: string
+  severity: string
+  complexity: 'low' | 'medium' | 'high'
+  assignedModel: string
+  estimatedCost: number
+  expectedSuccessRate: number
+  reasoning: string
+}
+
+export interface FavrOptimizationResult {
+  assignments: FavrAgentAssignment[]
+  totalEstimatedCost: number
+  totalBudget: number
+  expectedFixRate: number
+  skippedVulns: { vulnId: string; cveId: string; reason: 'over-budget' | 'no-capable-model' }[]
+  savingsVsNaive: number
+}
+
+export interface FavrAgentStats {
+  model: string
+  successRate: number
+  avgCostPerFix: number
+  avgTokensPerFix: number
+  avgDurationMs: number
+  totalAttempts: number
+  totalSuccesses: number
+  complexityScores: { low: number; medium: number; high: number }
+  taskTypeScores: Record<string, number>
+}
+
+export interface FavrModelHistoryEntry {
+  timestamp: number
+  vulnId: string
+  cveId: string
+  complexity: 'low' | 'medium' | 'high'
+  severity: string
+  model: string
+  success: boolean
+  tokensUsed: number
+  cost: number
+  durationMs: number
+  changedFiles: number
 }

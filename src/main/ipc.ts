@@ -6,15 +6,24 @@ import { agentManager } from './agents/manager'
 import { modelRouter } from './optimization/router'
 import { getSettings, saveSettings, saveProject, removeProject as removePersistedProject } from './store'
 import { cloudClient } from './cloud/supabase'
+import { runAnalysis, runWhatIf, generateReport } from './engine/index'
+import { buildAttackGraph } from './engine/attack-graph'
+import type { Vulnerability, AnalysisResult, WhatIfConstraints } from './engine/types'
+import type { ScanSnapshot } from './ingest/codebase-analyzer'
+import { loadMeridianScenario } from './data/meridian-scenario'
+import { LOG4J_SERVICES, LOG4J_DEPENDENCIES, LOG4J_VULNERABILITIES } from './data/log4j-benchmark'
+import { setCalibration, getCalibration, type RiskModel } from './engine/calibration'
+import { parseDocuments } from './ingest/parser'
+import { scanCodebase } from './ingest/scanner'
+import { analyzeCodebase } from './ingest/codebase-analyzer'
 import {
-  runAnalysis, runWhatIf, generateReport,
-  loadMeridianScenario, parseDocuments, scanCodebase, analyzeCodebase,
   saveScanResult, listScanHistory, getProjectHistory,
-  loadScanResult, getLatestSnapshot, deleteScanResult, clearScanHistory,
-  type Vulnerability, type AnalysisResult, type WhatIfConstraints, type ScanSnapshot,
-  buildAttackGraph
-} from '@favr/core'
+  loadScanResult, getLatestSnapshot, deleteScanResult, clearScanHistory
+} from './ingest/scan-history'
 import { getFreshness, clearVulnCache } from './ingest/vuln-data-pipeline'
+import { optimizeAgentAssignments } from './optimization/budget-optimizer'
+import { agentStatsTracker } from './optimization/agent-stats'
+import { WorkspaceSession, getActiveSession, setActiveSession } from './agents/workspace-session'
 
 // Store the latest analysis result for quick access
 let latestAnalysis: AnalysisResult | null = null
@@ -115,6 +124,123 @@ export function setupIpc(): void {
         emit('analysis:progress', { phase: 'scan', progress: 100, message: `Found ${found.length} vulnerabilities in codebase` })
       }
 
+      // Auto-generate stub services for any service IDs referenced by vulns but not defined
+      const existingServiceIds = new Set(parsedInput.services.map((s: any) => s.id))
+      const referencedIds = new Set<string>()
+      for (const vuln of parsedInput.vulnerabilities) {
+        for (const sid of vuln.affectedServiceIds) {
+          if (!existingServiceIds.has(sid)) referencedIds.add(sid)
+        }
+      }
+
+      // Infer tier from vulnerability severity: if a service has critical vulns, it's likely critical
+      const serviceTiers = new Map<string, 'critical' | 'high' | 'medium' | 'low'>()
+      const tierRank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 }
+      for (const vuln of parsedInput.vulnerabilities) {
+        for (const sid of vuln.affectedServiceIds) {
+          const current = serviceTiers.get(sid) ?? 'low'
+          if ((tierRank[vuln.severity] ?? 1) > (tierRank[current] ?? 1)) {
+            serviceTiers.set(sid, vuln.severity)
+          }
+        }
+      }
+
+      // Collect tech stack from affected packages
+      const serviceTechStacks = new Map<string, string[]>()
+      for (const vuln of parsedInput.vulnerabilities) {
+        for (const sid of vuln.affectedServiceIds) {
+          const stack = serviceTechStacks.get(sid) ?? []
+          if (vuln.affectedPackage && vuln.affectedPackage !== 'unknown') {
+            stack.push(vuln.affectedPackage)
+          }
+          serviceTechStacks.set(sid, stack)
+        }
+      }
+
+      for (const sid of referencedIds) {
+        parsedInput.services.push({
+          id: sid,
+          name: sid.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+          techStack: [...new Set(serviceTechStacks.get(sid) ?? [])],
+          tier: serviceTiers.get(sid) ?? 'medium' as const,
+          sla: serviceTiers.get(sid) === 'critical' ? 99.99 : serviceTiers.get(sid) === 'high' ? 99.9 : 99.5,
+          description: `Auto-generated from uploaded vulnerability data`,
+          baseCompromiseProbability: 0,
+          currentRiskScore: 0,
+          complianceFrameworks: [],
+          maintenanceWindow: null
+        })
+      }
+
+      // Auto-generate dependencies between services if none were provided.
+      // Infer: services sharing vulnerabilities are likely connected;
+      // auth/api/gateway services are likely depended upon by others.
+      if (parsedInput.dependencies.length === 0 && parsedInput.services.length > 1) {
+        const serviceIds = parsedInput.services.map((s: any) => s.id)
+        const addedDeps = new Set<string>()
+
+        // Find auth/gateway services — other services likely depend on them
+        const authIds = serviceIds.filter((id: string) => /auth|gateway|identity/.test(id))
+        const apiIds = serviceIds.filter((id: string) => /api|backend|server/.test(id))
+
+        for (const sid of serviceIds) {
+          // Non-auth services depend on auth services
+          for (const authId of authIds) {
+            if (sid !== authId) {
+              const key = `${sid}->${authId}`
+              if (!addedDeps.has(key)) {
+                parsedInput.dependencies.push({
+                  from: sid, to: authId,
+                  type: 'auth' as const,
+                  propagationWeight: 0.3,
+                  description: `${sid} depends on ${authId} for authentication`
+                })
+                addedDeps.add(key)
+              }
+            }
+          }
+        }
+
+        // Portal/frontend services depend on API services
+        const portalIds = serviceIds.filter((id: string) => /portal|frontend|web|admin|ui|dashboard/.test(id))
+        for (const portalId of portalIds) {
+          for (const apiId of apiIds) {
+            if (portalId !== apiId) {
+              const key = `${portalId}->${apiId}`
+              if (!addedDeps.has(key)) {
+                parsedInput.dependencies.push({
+                  from: portalId, to: apiId,
+                  type: 'api' as const,
+                  propagationWeight: 0.25,
+                  description: `${portalId} calls ${apiId}`
+                })
+                addedDeps.add(key)
+              }
+            }
+          }
+        }
+
+        // Services sharing the same vulnerability are likely connected via shared-lib
+        for (const vuln of parsedInput.vulnerabilities) {
+          const sids = vuln.affectedServiceIds
+          for (let a = 0; a < sids.length; a++) {
+            for (let b = a + 1; b < sids.length; b++) {
+              const key = `${sids[a]}->${sids[b]}`
+              const reverseKey = `${sids[b]}->${sids[a]}`
+              if (!addedDeps.has(key) && !addedDeps.has(reverseKey)) {
+                parsedInput.dependencies.push({
+                  from: sids[a], to: sids[b],
+                  type: 'shared-lib' as const,
+                  propagationWeight: 0.2,
+                  description: `Shared dependency: ${vuln.affectedPackage}`
+                })
+                addedDeps.add(key)
+              }
+            }
+          }
+        }
+      }
+
       // Run analysis
       const result = await runAnalysis({
         services: parsedInput.services,
@@ -136,6 +262,35 @@ export function setupIpc(): void {
 
   ipcMain.handle('analysis:getLatest', async () => {
     return latestAnalysis ? serializeAnalysis(latestAnalysis) : null
+  })
+
+  // ── Risk Model Configuration ─────────────────────────────────
+  ipcMain.handle('analysis:setRiskModel', async (_event, model: RiskModel) => {
+    return setCalibration(model)
+  })
+
+  ipcMain.handle('analysis:getRiskModel', async () => {
+    return getCalibration()
+  })
+
+  // ── Log4j Benchmark (validation scenario) ────────────────────
+  ipcMain.handle('analysis:loadBenchmark', async () => {
+    const emit = (channel: string, data: unknown) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(channel, data)
+      }
+    }
+
+    const result = await runAnalysis({
+      services: LOG4J_SERVICES,
+      dependencies: LOG4J_DEPENDENCIES,
+      vulnerabilities: LOG4J_VULNERABILITIES,
+      iterations: 5000,
+      onProgress: (p) => emit('analysis:progress', p)
+    })
+
+    latestAnalysis = result
+    return serializeAnalysis(result)
   })
 
   ipcMain.handle('analysis:scan', async (_event, data: { codebasePath: string }) => {
@@ -454,6 +609,156 @@ export function setupIpc(): void {
       const msg = err instanceof Error ? err.message : String(err)
       throw new Error(`Undo failed: ${msg}`)
     }
+  })
+
+  // ── Budget Optimizer & Agent Stats ─────────────────────────
+  ipcMain.handle('optimizer:preview', async (_event, data: { budget: number; maxConcurrent: number; preferFree: boolean }) => {
+    if (!latestAnalysis) throw new Error('Run a scan first')
+
+    const vulns = latestAnalysis.graph.vulnerabilities as unknown as import('./engine/types').Vulnerability[]
+    const order = latestAnalysis.simulation.optimalOrder
+    const stats = agentStatsTracker.getAllStats()
+    const models = modelRouter.getModels()
+
+    const result = optimizeAgentAssignments(
+      vulns,
+      order,
+      {
+        maxBudget: data.budget,
+        maxConcurrentAgents: data.maxConcurrent,
+        preferFree: data.preferFree
+      },
+      stats,
+      models
+    )
+
+    return result
+  })
+
+  ipcMain.handle('agentStats:getAll', async () => {
+    return agentStatsTracker.getAllStats()
+  })
+
+  ipcMain.handle('agentStats:getLeaderboard', async () => {
+    return agentStatsTracker.getLeaderboard()
+  })
+
+  ipcMain.handle('agentStats:getHistory', async (_event, model: string, limit?: number) => {
+    return agentStatsTracker.getHistory(model, limit)
+  })
+
+  ipcMain.handle('agentStats:reset', async () => {
+    agentStatsTracker.reset()
+    return { success: true }
+  })
+
+  // ── Remediation Workspace ─────────────────────────────────
+
+  ipcMain.handle('workspace:start', async (_event, data: {
+    codebasePath: string
+    budget: number
+    maxConcurrent: number
+    preferFree: boolean
+  }) => {
+    if (!latestAnalysis) throw new Error('Run a scan first')
+    if (!data.codebasePath) throw new Error('Codebase path required')
+    if (getActiveSession()?.getStatus() === 'running') {
+      throw new Error('A workspace session is already running — cancel it first')
+    }
+
+    const vulns = latestAnalysis.graph.vulnerabilities as unknown as Vulnerability[]
+    const services = latestAnalysis.graph.services as unknown as import('./engine/types').Service[]
+    const order = latestAnalysis.simulation.optimalOrder
+    const stats = agentStatsTracker.getAllStats()
+    const models = modelRouter.getModels()
+
+    // Run optimizer
+    const optimization = optimizeAgentAssignments(
+      vulns, order,
+      { maxBudget: data.budget, maxConcurrentAgents: data.maxConcurrent, preferFree: data.preferFree },
+      stats, models
+    )
+
+    if (optimization.assignments.length === 0) {
+      throw new Error('No vulnerabilities could be assigned within budget')
+    }
+
+    // Git safety: stash current working tree
+    fixSessionStash = null
+    try {
+      const porcelain = execSync('git status --porcelain', { cwd: data.codebasePath, encoding: 'utf-8' }).trim()
+      if (porcelain.length > 0) {
+        execSync('git stash push -u -m "favr-workspace-backup"', { cwd: data.codebasePath, encoding: 'utf-8' })
+        fixSessionStash = { cwd: data.codebasePath, created: true }
+      } else {
+        fixSessionStash = { cwd: data.codebasePath, created: false }
+      }
+    } catch (err) {
+      console.warn('[workspace] git not available — running without undo safety net:', err)
+    }
+
+    // Create and run session
+    const session = new WorkspaceSession({
+      codebasePath: data.codebasePath,
+      totalBudget: data.budget,
+      maxConcurrent: data.maxConcurrent,
+      assignments: optimization.assignments,
+      skippedVulns: optimization.skippedVulns.map(s => s.vulnId),
+      vulns,
+      services
+    })
+
+    setActiveSession(session)
+
+    // Run in background — don't block the IPC response
+    session.run().then(finalState => {
+      console.log(`[workspace] Session ${finalState.sessionId} complete: ${finalState.results.filter(r => r.success).length}/${finalState.results.length} succeeded, $${finalState.spent.toFixed(4)} spent`)
+    }).catch(err => {
+      console.error('[workspace] Session failed:', err)
+    })
+
+    return {
+      sessionId: session.getState().sessionId,
+      assignments: optimization.assignments,
+      totalEstimatedCost: optimization.totalEstimatedCost,
+      expectedFixRate: optimization.expectedFixRate,
+      skippedVulns: optimization.skippedVulns,
+      savingsVsNaive: optimization.savingsVsNaive
+    }
+  })
+
+  ipcMain.handle('workspace:pause', async () => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.pause()
+    return { sessionId: session.getState().sessionId, status: 'paused' }
+  })
+
+  ipcMain.handle('workspace:resume', async () => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.resume()
+    return { sessionId: session.getState().sessionId, status: 'running' }
+  })
+
+  ipcMain.handle('workspace:cancel', async () => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.cancel()
+    return { sessionId: session.getState().sessionId, status: 'cancelled' }
+  })
+
+  ipcMain.handle('workspace:retry', async (_event, data: { vulnId: string; model?: string }) => {
+    const session = getActiveSession()
+    if (!session) throw new Error('No active workspace session')
+    session.retryVuln(data.vulnId, data.model)
+    return { vulnId: data.vulnId }
+  })
+
+  ipcMain.handle('workspace:state', async () => {
+    const session = getActiveSession()
+    if (!session) return null
+    return session.getState()
   })
 
   // ── Documents ───────────────────────────────────────────────

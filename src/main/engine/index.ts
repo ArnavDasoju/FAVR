@@ -229,3 +229,5 @@ export type {
 } from './types'
 export { runWhatIf } from './what-if'
 export { generateReport } from './report'
+export { getCalibration, setCalibration, getPreset, getAvailableModels } from './calibration'
+export type { RiskModel, CalibrationConfig } from './calibration'

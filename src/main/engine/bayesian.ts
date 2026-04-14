@@ -9,10 +9,25 @@
  * Uses iterative belief propagation until convergence.
  */
 
-import type { AttackGraph, Service, Dependency, ComplianceFramework } from './types'
+import type { AttackGraph, Service, Dependency, Vulnerability, ComplianceFramework } from './types'
+import { getCalibration } from './calibration'
 
 const MAX_ITERATIONS = 50
 const CONVERGENCE_THRESHOLD = 0.001
+
+/**
+ * Compute the effective exploit probability for a vulnerability,
+ * blending EPSS (real-world ML prediction) with CVSS-derived probability.
+ *
+ * EPSS is weighted higher because it outperforms CVSS at predicting
+ * real exploitation (AUC 0.82 vs 0.58, Jacobs et al. 2021).
+ * The blend weight is configurable via the risk model.
+ */
+export function effectiveExploitProb(vuln: Vulnerability): number {
+  const { epssWeight } = getCalibration()
+  const epss = vuln.epssScore ?? vuln.exploitProbability
+  return epssWeight * epss + (1 - epssWeight) * vuln.exploitProbability
+}
 
 /**
  * Compliance framework risk multipliers.
@@ -161,7 +176,7 @@ export function recomputeRiskAfterPatching(
     }
   }
 
-  // Recompute base probabilities
+  // Recompute base probabilities using EPSS-weighted blend
   for (const service of graph.services) {
     const openVulns = graph.vulnerabilities.filter(v =>
       v.affectedServiceIds.includes(service.id) && v.status === 'open'
@@ -169,7 +184,7 @@ export function recomputeRiskAfterPatching(
     if (openVulns.length === 0) {
       service.baseCompromiseProbability = 0
     } else {
-      const survival = openVulns.reduce((acc, v) => acc * (1 - v.exploitProbability), 1)
+      const survival = openVulns.reduce((acc, v) => acc * (1 - effectiveExploitProb(v)), 1)
       service.baseCompromiseProbability = 1 - survival
     }
   }
@@ -182,7 +197,7 @@ export function recomputeRiskAfterPatching(
     vuln.status = originalStatuses.get(vuln.id) as 'open' | 'in-progress' | 'patched' | 'verified'
   }
 
-  // Restore original base probabilities
+  // Restore original base probabilities using EPSS-weighted blend
   for (const service of graph.services) {
     const openVulns = graph.vulnerabilities.filter(v =>
       v.affectedServiceIds.includes(service.id) && originalStatuses.get(v.id) === 'open'
@@ -190,7 +205,7 @@ export function recomputeRiskAfterPatching(
     if (openVulns.length === 0) {
       service.baseCompromiseProbability = 0
     } else {
-      const survival = openVulns.reduce((acc, v) => acc * (1 - v.exploitProbability), 1)
+      const survival = openVulns.reduce((acc, v) => acc * (1 - effectiveExploitProb(v)), 1)
       service.baseCompromiseProbability = 1 - survival
     }
   }
