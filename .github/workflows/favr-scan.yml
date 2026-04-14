@@ -1,0 +1,121 @@
+name: FAVR Vulnerability Scan
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  favr-scan:
+    name: Scan for vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install FAVR
+        run: |
+          npm install -g @favr/cli
+
+      - name: Run FAVR scan
+        id: scan
+        continue-on-error: true
+        run: |
+          favr-scan . \
+            --format sarif \
+            --diff \
+            --threshold high \
+            --output favr.sarif \
+            --no-progress \
+            2>favr-stderr.log
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && hashFiles('favr.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: favr.sarif
+          category: favr
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let summary = 'FAVR scan completed.';
+            let newCount = 0;
+            let worsenedCount = 0;
+            let totalCount = 0;
+
+            // Try to parse SARIF for counts
+            try {
+              const sarif = JSON.parse(fs.readFileSync('favr.sarif', 'utf8'));
+              const results = sarif.runs?.[0]?.results ?? [];
+              totalCount = results.length;
+              const errors = results.filter(r => r.level === 'error').length;
+              const warnings = results.filter(r => r.level === 'warning').length;
+              const notes = results.filter(r => r.level === 'note').length;
+
+              summary = `**FAVR Vulnerability Scan**\n\n`;
+              summary += `| Severity | Count |\n|----------|-------|\n`;
+              summary += `| 🔴 Critical/High | ${errors} |\n`;
+              summary += `| 🟡 Medium | ${warnings} |\n`;
+              summary += `| 🔵 Low | ${notes} |\n`;
+              summary += `| **Total** | **${totalCount}** |\n\n`;
+            } catch (e) {
+              // SARIF not available — use stderr log
+              try {
+                const log = fs.readFileSync('favr-stderr.log', 'utf8');
+                summary += '\n\n' + log.split('\n').slice(-5).join('\n');
+              } catch {}
+            }
+
+            const exitCode = '${{ steps.scan.outcome }}' === 'failure' ? 1 : 0;
+
+            if (exitCode === 1) {
+              summary += `\n⚠️ **Scan found issues exceeding the threshold.** [View details in the Security tab](${context.payload.repository.html_url}/security/code-scanning).\n`;
+            } else {
+              summary += `\n✅ **No new vulnerabilities detected above threshold.**\n`;
+            }
+
+            // Find and update existing comment, or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.body?.includes('FAVR Vulnerability Scan')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: summary,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: summary,
+              });
+            }
+
+      - name: Fail if threshold exceeded
+        if: steps.scan.outcome == 'failure'
+        run: exit 1

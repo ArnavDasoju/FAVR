@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAnalysisStore } from '../stores/analysisStore'
 import { useAgentStore } from '../stores/agentStore'
 import DependencyGraph from './charts/DependencyGraph'
-import ServiceHeatmap from './charts/ServiceHeatmap'
 import SeverityDonut from './charts/SeverityDonut'
+import MonteCarloViz from './MonteCarloViz'
 import type { AnalysisPhase } from '../../shared/types'
 
 // ─── Fix-All session types ──────────────────────────────────
@@ -35,21 +35,20 @@ const SEVERITY_COLORS: Record<string, string> = {
 interface PhaseInfo {
   id: AnalysisPhase
   label: string
-  icon: string
 }
 
 const SCAN_PHASES: PhaseInfo[] = [
-  { id: 'discovery',       label: 'Discovering services',              icon: '🔍' },
-  { id: 'docker',                  label: 'Scanning Docker images',   icon: '🐳' },
-  { id: 'dependencies',    label: 'Mapping dependencies',              icon: '🔗' },
-  { id: 'vulnerabilities', label: 'Querying vulnerability databases',  icon: '🛡' },
-  { id: 'graph',           label: 'Building attack graph',             icon: '📊' },
-  { id: 'bayesian',        label: 'Running Bayesian risk propagation', icon: '📈' },
-  { id: 'monte-carlo',     label: 'Monte Carlo simulation',           icon: '🎲' },
-  { id: 'pareto',          label: 'Computing Pareto frontier',         icon: '⚖' },
-  { id: 'blast-radius',    label: 'Analyzing blast radius',            icon: '💥' },
-  { id: 'scheduling',      label: 'Building patch schedule',           icon: '📅' },
-  { id: 'compliance',      label: 'Checking compliance frameworks',    icon: '✓' },
+  { id: 'discovery',       label: 'Discovering services' },
+  { id: 'docker',          label: 'Scanning Docker images' },
+  { id: 'dependencies',    label: 'Mapping dependencies' },
+  { id: 'vulnerabilities', label: 'Querying vulnerability databases' },
+  { id: 'graph',           label: 'Building attack graph' },
+  { id: 'bayesian',        label: 'Running Bayesian risk propagation' },
+  { id: 'monte-carlo',     label: 'Monte Carlo simulation' },
+  { id: 'pareto',          label: 'Computing Pareto frontier' },
+  { id: 'blast-radius',    label: 'Analyzing blast radius' },
+  { id: 'scheduling',      label: 'Building patch schedule' },
+  { id: 'compliance',      label: 'Checking compliance frameworks' },
 ]
 
 // Map phase to its index in the pipeline
@@ -83,7 +82,7 @@ function useCountUp(target: number, duration = 700): number {
   return value
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onOpenWorkspace }: { onOpenWorkspace?: (codebasePath: string) => void }) {
   const result = useAnalysisStore(s => s.result)
   const phase = useAnalysisStore(s => s.phase)
   const progress = useAnalysisStore(s => s.progress)
@@ -93,9 +92,11 @@ export default function Dashboard() {
   const setMode = useAnalysisStore(s => s.setMode)
   const hasSeenResults = useAnalysisStore(s => s.hasSeenResults)
 
+  const uploadedFiles = useAnalysisStore(s => s.uploadedFiles)
   const [codebasePath, setCodebasePath] = useState('')
   const [loading, setLoading] = useState(false)
   const [scanStats, setScanStats] = useState<{ servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[]; unresolvedPackages?: number; dockerImagesScanned?: number; isMonorepo?: boolean; scanDurationMs?: number } | null>(null)
+  const [riskModel, setRiskModel] = useState<'conservative' | 'balanced' | 'aggressive'>('balanced')
   const [scanHistory, setScanHistory] = useState<Array<{ id: string; projectPath: string; projectName: string; timestamp: number; durationMs: number; stats: any }>>([])
   const [showHistory, setShowHistory] = useState(false)
 
@@ -143,6 +144,7 @@ export default function Dashboard() {
     setCompletedPhases(new Map())
     setShowResults(false)
     try {
+      await window.api.invoke('analysis:setRiskModel', riskModel)
       await window.api.invoke('analysis:loadDemo')
     } catch (err) {
       console.error('Demo load failed:', err)
@@ -157,6 +159,7 @@ export default function Dashboard() {
     setCompletedPhases(new Map())
     setShowResults(false)
     try {
+      await window.api.invoke('analysis:setRiskModel', riskModel)
       await window.api.invoke('analysis:run', {
         filePaths: uploadedFiles.length > 0 ? uploadedFiles : undefined,
         codebasePath: mode === 'remediation' && codebasePath ? codebasePath : undefined
@@ -174,6 +177,7 @@ export default function Dashboard() {
     setCompletedPhases(new Map())
     setShowResults(false)
     useAnalysisStore.getState().reset()
+    await window.api.invoke('analysis:setRiskModel', riskModel)
     try {
       const result = await window.api.invoke('analysis:analyzeCodebase', {
         codebasePath
@@ -195,6 +199,16 @@ export default function Dashboard() {
     if (files) {
       useAnalysisStore.getState().setUploadedFiles(files)
     }
+  }
+
+  function handleExitToHome() {
+    useAnalysisStore.getState().reset()
+    useAnalysisStore.getState().setUploadedFiles([])
+    setCodebasePath('')
+    setScanStats(null)
+    setShowResults(false)
+    setCompletedPhases(new Map())
+    setLoading(false)
   }
 
   // Load scan history on mount
@@ -251,7 +265,9 @@ export default function Dashboard() {
               }`}
             >
               <div className="flex items-center gap-3 mb-2">
-                <span className="text-lg">📂</span>
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                </svg>
                 <span className="text-sm font-bold">Scan Codebase</span>
               </div>
               <div className="text-[11px] text-surface-500 leading-relaxed">
@@ -267,7 +283,9 @@ export default function Dashboard() {
               }`}
             >
               <div className="flex items-center gap-3 mb-2">
-                <span className="text-lg">📄</span>
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
                 <span className="text-sm font-bold">Upload Documents</span>
               </div>
               <div className="text-[11px] text-surface-500 leading-relaxed">
@@ -318,11 +336,16 @@ export default function Dashboard() {
                   onClick={handleUploadDocs}
                   className="w-full border-2 border-dashed border-surface-700 rounded-btn p-6 text-surface-500 text-xs hover:border-surface-500 hover:text-surface-300 transition-colors"
                 >
-                  Click to upload documents
+                  {uploadedFiles.length > 0 ? 'Click to upload more documents' : 'Click to upload documents'}
                 </button>
-                {useAnalysisStore.getState().uploadedFiles.length > 0 && (
-                  <div className="mt-2 text-[10px] text-green-400 animate-fadeIn">
-                    {useAnalysisStore.getState().uploadedFiles.length} file(s) uploaded
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-1.5 animate-fadeIn">
+                    {uploadedFiles.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[10px]">
+                        <span className="text-green-400">+</span>
+                        <span className="text-surface-300 font-mono truncate">{f.split(/[\\/]/).pop()}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -345,6 +368,33 @@ export default function Dashboard() {
               </div>
             </>
           )}
+
+          {/* Risk Model Selector */}
+          <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-5 animate-slideUp stagger-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-white mb-0.5">Risk Model</div>
+                <div className="text-[10px] text-surface-500">Controls how unknown factors and edge cases are weighted</div>
+              </div>
+              <div className="flex gap-1.5">
+                {(['conservative', 'balanced', 'aggressive'] as const).map(model => (
+                  <button
+                    key={model}
+                    onClick={() => setRiskModel(model)}
+                    className={`px-3 py-1.5 rounded-btn text-[10px] font-bold transition-all ${
+                      riskModel === model
+                        ? model === 'conservative' ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                          : model === 'balanced' ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30'
+                          : 'bg-green-500/15 text-green-400 border border-green-500/30'
+                        : 'bg-surface-800 text-surface-500 border border-surface-700 hover:text-surface-300'
+                    }`}
+                  >
+                    {model.charAt(0).toUpperCase() + model.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
           {/* Actions */}
           <div className="flex gap-3 animate-slideUp stagger-5">
@@ -445,14 +495,31 @@ export default function Dashboard() {
     const currentPhaseIndex = PHASE_INDEX.get(phase as AnalysisPhase) ?? -1
 
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="max-w-lg w-full px-8 animate-scaleIn">
+      <div className="h-full flex flex-col overflow-auto py-6">
+        <div className="px-8 mb-2">
+          <button
+            onClick={handleExitToHome}
+            className="flex items-center gap-2 text-xs text-surface-500 hover:text-white transition-colors group"
+          >
+            <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="font-medium">Cancel &amp; Start Over</span>
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+        <div className="max-w-3xl w-full px-8 animate-scaleIn">
           {/* Header */}
-          <div className="text-center mb-8">
-            <h2 className="text-xl font-black text-white mb-1">Analyzing</h2>
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-black text-white mb-1 font-display">Analyzing</h2>
             <p className="text-xs text-surface-500">
               {codebasePath ? codebasePath.split(/[\\/]/).pop() : 'Running analysis pipeline'}
             </p>
+          </div>
+
+          {/* Monte Carlo live visualization */}
+          <div className="mb-5 animate-slideUp">
+            <MonteCarloViz />
           </div>
 
           {/* Phase list */}
@@ -548,77 +615,41 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        </div>
       </div>
     )
   }
 
   // ─── Results Dashboard ─────────────────────────────────────
   const totalRisk = Math.round((result!.simulation.totalRiskBefore ?? 0) * 100)
-  const reduction = Math.round(result!.simulation.riskReduction ?? 0)
   const vulnCount = result!.graph.vulnerabilities.length
-  const critCount = result!.graph.vulnerabilities.filter(v => v.severity === 'critical').length
-  const complianceRisk = result!.complianceSummary ? Math.round(result!.complianceSummary.overallComplianceRisk * 100) : 0
   const urgentCompliance = result!.complianceSummary?.violations.reduce((s, v) => s + v.urgentCount, 0) ?? 0
-  const maxScheduleWeek = result!.schedule?.length > 0 ? Math.max(...result!.schedule.map(s => s.weekNumber)) : 0
 
   return (
     <ResultsDashboard
       result={result!}
       totalRisk={totalRisk}
-      reduction={reduction}
       vulnCount={vulnCount}
-      critCount={critCount}
-      complianceRisk={complianceRisk}
       urgentCompliance={urgentCompliance}
-      maxScheduleWeek={maxScheduleWeek}
       scanStats={scanStats}
       codebasePath={codebasePath}
+      onExit={handleExitToHome}
+      onOpenWorkspace={onOpenWorkspace}
       animate={!hasSeenResults}
     />
   )
 }
 
-// ─── Risk Gauge SVG ───────────────────────────────────────────
-function RiskGauge({ value, size = 100, strokeWidth = 8, animate: shouldAnimate }: { value: number; size?: number; strokeWidth?: number; animate: boolean }) {
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-  const progress = Math.min(value, 100) / 100
-  const dashOffset = circumference * (1 - progress)
-  const color = value > 70 ? '#EF4444' : value > 40 ? '#F59E0B' : '#22C55E'
-  const bgColor = value > 70 ? 'rgba(239,68,68,0.1)' : value > 40 ? 'rgba(245,158,11,0.1)' : 'rgba(34,197,94,0.1)'
-  const grade = value > 80 ? 'F' : value > 60 ? 'D' : value > 40 ? 'C' : value > 20 ? 'B' : 'A'
-
-  return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#27272A" strokeWidth={strokeWidth} />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius} fill="none"
-          stroke={color} strokeWidth={strokeWidth} strokeLinecap="round"
-          strokeDasharray={circumference} strokeDashoffset={dashOffset}
-          style={shouldAnimate ? { transition: 'stroke-dashoffset 1s ease-out' } : undefined}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-black text-white leading-none">{value}%</span>
-        <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color }}>{grade}</span>
-      </div>
-    </div>
-  )
-}
-
 // ─── Results Dashboard (extracted for count-up hooks) ─────────
-function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, complianceRisk, urgentCompliance, maxScheduleWeek, scanStats, codebasePath, animate }: {
+function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scanStats, codebasePath, onExit, onOpenWorkspace, animate }: {
   result: NonNullable<ReturnType<typeof useAnalysisStore.getState>['result']>
   totalRisk: number
-  reduction: number
   vulnCount: number
-  critCount: number
-  complianceRisk: number
   urgentCompliance: number
-  maxScheduleWeek: number
   scanStats: { servicesFound: number; packagesScanned: number; vulnerabilitiesFound: number; ecosystems: string[]; unresolvedPackages?: number; dockerImagesScanned?: number; isMonorepo?: boolean; scanDurationMs?: number } | null
   codebasePath: string
+  onExit: () => void
+  onOpenWorkspace?: (codebasePath: string) => void
   animate: boolean
 }) {
   // Mark results as seen after first render
@@ -629,23 +660,8 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
     }
   }, [animate])
 
-  // Animated counters only on first view
-  const animRisk = useCountUp(animate ? totalRisk : 0, animate ? 700 : 0)
-  const animReduction = useCountUp(animate ? reduction : 0, animate ? 700 : 0)
-  const animVulns = useCountUp(animate ? vulnCount : 0, animate ? 700 : 0)
-  const animCrit = useCountUp(animate ? critCount : 0, animate ? 700 : 0)
-  const animCompliance = useCountUp(animate ? complianceRisk : 0, animate ? 700 : 0)
-  const animWeeks = useCountUp(animate ? maxScheduleWeek : 0, animate ? 400 : 0)
-
   // Helper: only apply animation class on first view
   const a = (cls: string) => animate ? cls : ''
-
-  const displayRisk = animate ? animRisk : totalRisk
-  const displayReduction = animate ? animReduction : reduction
-  const displayVulns = animate ? animVulns : vulnCount
-  const displayCrit = animate ? animCrit : critCount
-  const displayCompliance = animate ? animCompliance : complianceRisk
-  const displayWeeks = animate ? animWeeks : maxScheduleWeek
 
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState(false)
@@ -806,6 +822,20 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
 
   return (
     <div className="h-full overflow-y-auto p-6">
+      {/* Top bar with exit button */}
+      <div className={`flex items-center justify-between mb-4 ${a('animate-fadeIn')}`}>
+        <button
+          onClick={onExit}
+          className="flex items-center gap-2 text-xs text-surface-500 hover:text-white transition-colors group"
+        >
+          <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span className="font-medium">New Analysis</span>
+        </button>
+        <span className="text-[10px] text-surface-600 font-mono">{codebasePath ? codebasePath.split(/[\\/]/).pop() : 'FAVR Analysis'}</span>
+      </div>
+
       {/* Scan stats banner (if came from codebase scan) */}
       {scanStats && (
         <div className={`bg-surface-900 border border-surface-800 rounded-card p-3 mb-4 flex items-center gap-4 flex-wrap ${a('animate-slideUp')}`}>
@@ -880,71 +910,6 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
         </div>
       )}
 
-      {/* Hero Section — Risk Gauge + Key Stats */}
-      <div className={`grid grid-cols-12 gap-4 mb-6 ${a('animate-slideUp stagger-1')}`}>
-        {/* Risk Gauge — spans 3 cols */}
-        <div className="col-span-3 bg-surface-900 border border-surface-800 rounded-card p-5 flex flex-col items-center justify-center card-hover">
-          <RiskGauge value={displayRisk} size={110} strokeWidth={9} animate={animate} />
-          <div className="text-[10px] text-surface-500 uppercase font-bold mt-2 tracking-wider">System Risk</div>
-        </div>
-
-        {/* Stat cards — spans 9 cols (5 cards) */}
-        <div className="col-span-9 grid grid-cols-5 gap-3">
-          <div className={`bg-surface-900 border border-surface-800 rounded-card p-4 card-hover ${a('animate-slideUp stagger-2')}`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-              <span className="text-[9px] text-surface-500 uppercase font-bold tracking-wider">Reduction</span>
-            </div>
-            <div className="text-2xl font-black text-green-400">-{displayReduction}%</div>
-            <div className="text-[10px] text-surface-600 mt-1">after remediation</div>
-          </div>
-
-          <div className={`bg-surface-900 border border-surface-800 rounded-card p-4 card-hover ${a('animate-slideUp stagger-3')}`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <svg className="w-3.5 h-3.5 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <span className="text-[9px] text-surface-500 uppercase font-bold tracking-wider">CVEs</span>
-            </div>
-            <div className="text-2xl font-black text-white">{displayVulns}</div>
-            <div className="text-[10px] text-surface-600 mt-1">total found</div>
-          </div>
-
-          <div className={`bg-surface-900 border border-surface-800 rounded-card p-4 card-hover ${a('animate-slideUp stagger-4')}`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <div className={`w-2 h-2 rounded-full bg-red-400 ${critCount > 0 ? 'status-blink' : ''}`} />
-              <span className="text-[9px] text-surface-500 uppercase font-bold tracking-wider">Critical</span>
-            </div>
-            <div className={`text-2xl font-black text-red-400 ${critCount > 0 ? 'animate-numberGlow' : ''}`}>{displayCrit}</div>
-            <div className="text-[10px] text-surface-600 mt-1">needs attention</div>
-          </div>
-
-          <div className={`bg-surface-900 border border-surface-800 rounded-card p-4 card-hover ${a('animate-slideUp stagger-5')}`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <svg className="w-3.5 h-3.5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <span className="text-[9px] text-surface-500 uppercase font-bold tracking-wider">Compliance</span>
-            </div>
-            <div className={`text-2xl font-black ${complianceRisk > 50 ? 'text-purple-400' : 'text-surface-400'}`}>{displayCompliance}%</div>
-            <div className="text-[10px] text-surface-600 mt-1">compliance risk</div>
-          </div>
-
-          <div className={`bg-surface-900 border border-surface-800 rounded-card p-4 card-hover ${a('animate-slideUp stagger-6')}`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <svg className="w-3.5 h-3.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-[9px] text-surface-500 uppercase font-bold tracking-wider">Schedule</span>
-            </div>
-            <div className="text-2xl font-black text-blue-400">{displayWeeks}wk</div>
-            <div className="text-[10px] text-surface-600 mt-1">to remediate</div>
-          </div>
-        </div>
-      </div>
-
       {/* Compliance Alerts */}
       {urgentCompliance > 0 && (
         <div className={`bg-purple-500/10 border border-purple-500/30 rounded-card p-4 mb-6 flex items-center justify-between animate-pulseGlow ${a('animate-slideUp stagger-7')}`}>
@@ -983,11 +948,11 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
         />
       )}
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className={a('animate-slideUp stagger-7')}><DependencyGraph /></div>
-        <div className={a('animate-slideUp stagger-8')}><ServiceHeatmap /></div>
+      {/* Dependency graph — full width so the map has room to breathe */}
+      <div className={`${a('animate-slideUp stagger-7')} mb-4`}>
+        <DependencyGraph />
       </div>
+
 
       {/* Top 5 Priority Patches */}
       <div className={`bg-surface-900 border border-surface-800 rounded-card p-5 mb-6 ${a('animate-fadeIn')}`} style={animate ? { animationDelay: '400ms' } : undefined}>
@@ -1000,16 +965,29 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
             <span className="text-[9px] bg-surface-800 text-surface-400 px-2 py-0.5 rounded-full font-bold">FAVR Optimized</span>
           </div>
           <div className="flex items-center gap-3">
+            {onOpenWorkspace && (
+              <button
+                onClick={() => onOpenWorkspace(codebasePath)}
+                disabled={!codebasePath || vulnCount === 0}
+                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-btn bg-sage-500/15 border border-sage-500/40 text-sage-200 hover:bg-sage-500/25 hover:border-sage-500/60 transition-all btn-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                title={codebasePath ? 'Open Remediation Workspace with budget optimization' : 'Scan a codebase first'}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Workspace
+              </button>
+            )}
             <button
               onClick={handleFixAll}
               disabled={fixPhase === 'patching' || !codebasePath || vulnCount === 0}
               className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-btn bg-green-500/10 border border-green-500/40 text-green-300 hover:bg-green-500/20 hover:border-green-500/60 transition-all btn-hover disabled:opacity-40 disabled:cursor-not-allowed"
-              title={codebasePath ? 'Dispatch agents to patch every vulnerability in optimal order' : 'Scan a codebase first'}
+              title={codebasePath ? 'Quick fix all (sequential, no budget control)' : 'Scan a codebase first'}
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              {fixPhase === 'patching' ? 'Patching...' : 'Fix All with Agents'}
+              {fixPhase === 'patching' ? 'Patching...' : 'Quick Fix'}
             </button>
           <button
             onClick={handleExport}
@@ -1110,37 +1088,81 @@ function ResultsDashboard({ result, totalRisk, reduction, vulnCount, critCount, 
         </div>
       </div>
 
-      {/* Bottom row: Donut + Engine Stats */}
+      {/* Bottom row: Donut + System Risk Gauge */}
       <div className={`grid grid-cols-2 gap-4 ${a('animate-fadeIn')}`} style={animate ? { animationDelay: '500ms' } : undefined}>
         <SeverityDonut />
-        <div className="bg-surface-900 border border-surface-800 rounded-card p-5 card-hover">
-          <div className="flex items-center gap-2 mb-4">
-            <svg className="w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <h3 className="text-sm font-bold text-white">Engine Stats</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-surface-800/30 rounded-btn p-3">
-              <div className="text-lg font-black text-white">{result.simulation.iterations.toLocaleString()}</div>
-              <div className="text-[10px] text-surface-500">MC Simulations</div>
-            </div>
-            <div className="bg-surface-800/30 rounded-btn p-3">
-              <div className="text-lg font-black text-white">{Math.round(result.simulation.convergenceScore * 100)}%</div>
-              <div className="text-[10px] text-surface-500">Convergence</div>
-            </div>
-            <div className="bg-surface-800/30 rounded-btn p-3">
-              <div className="text-lg font-black text-white">{result.pareto.frontierIds.length}</div>
-              <div className="text-[10px] text-surface-500">Pareto Solutions</div>
-            </div>
-            <div className="bg-surface-800/30 rounded-btn p-3">
-              <div className="text-lg font-black text-white">{result.complianceSummary?.frameworks.length ?? 0}</div>
-              <div className="text-[10px] text-surface-500">Frameworks Checked</div>
-            </div>
-          </div>
-        </div>
+        <SystemRiskGauge />
       </div>
+    </div>
+  )
+}
+
+// ─── System Risk Gauge ──────────────────────────────────────
+function SystemRiskGauge() {
+  const result = useAnalysisStore(s => s.result)
+  if (!result) return null
+
+  const totalRisk = Math.round((result.simulation.totalRiskBefore ?? 0) * 100)
+  const riskGrade = totalRisk > 80 ? 'F' : totalRisk > 60 ? 'D' : totalRisk > 40 ? 'C' : totalRisk > 20 ? 'B' : 'A'
+
+  const rc = result.simulation.riskConfidence
+  const ciLow = rc ? Math.round(rc.lowerBefore * 100) : totalRisk
+  const ciHigh = rc ? Math.round(rc.upperBefore * 100) : totalRisk
+
+  // Gauge geometry
+  const size = 160
+  const strokeWidth = 14
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  // Start from bottom-left (~135°) and sweep 270°
+  const startAngle = 135
+  const sweepAngle = 270
+  const progress = Math.min(totalRisk, 100) / 100
+  const dashLen = circumference * (sweepAngle / 360)
+  const filledDash = dashLen * progress
+  const gapDash = dashLen - filledDash
+
+  const gradeColor = totalRisk > 70 ? '#D76B5A' : totalRisk > 40 ? '#E0953F' : '#82a968'
+
+  return (
+    <div className="glass-card rounded-card p-5 flex flex-col items-center justify-center card-hover">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mb-3">
+        {/* Background track */}
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke="currentColor"
+          className="text-surface-300"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={`${dashLen} ${circumference - dashLen}`}
+          strokeDashoffset={-circumference * (startAngle / 360)}
+          transform={`rotate(0, ${size / 2}, ${size / 2})`}
+        />
+        {/* Filled arc */}
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke={gradeColor}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={`${filledDash} ${circumference - filledDash}`}
+          strokeDashoffset={-circumference * (startAngle / 360)}
+          transform={`rotate(0, ${size / 2}, ${size / 2})`}
+          style={{ transition: 'stroke-dasharray 0.8s ease-out' }}
+        />
+        {/* Center text */}
+        <text x={size / 2} y={size / 2 - 4} textAnchor="middle" dominantBaseline="central"
+          fill="currentColor" className="text-surface-100" fontSize="32" fontWeight="900" fontFamily="Inter, sans-serif">
+          {totalRisk}%
+        </text>
+        <text x={size / 2} y={size / 2 + 22} textAnchor="middle" dominantBaseline="central"
+          fill={gradeColor} fontSize="14" fontWeight="700" fontFamily="Inter, sans-serif">
+          {riskGrade}
+        </text>
+      </svg>
+      <div className="text-[11px] font-bold text-surface-300 uppercase tracking-widest mb-1">System Risk</div>
+      <div className="text-[10px] text-surface-500 font-mono">{ciLow}–{ciHigh}% CI</div>
     </div>
   )
 }
@@ -1303,3 +1325,4 @@ function FixAllPanel({
     </div>
   )
 }
+

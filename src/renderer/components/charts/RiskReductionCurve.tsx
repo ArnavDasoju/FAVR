@@ -37,6 +37,7 @@ export default function RiskReductionCurve() {
             dataKey="step"
             tick={{ fill: '#71717A', fontSize: 10 }}
             tickFormatter={(v) => v === 0 ? '' : `${v}`}
+            interval={Math.max(0, Math.floor(data.length / 8) - 1)}
             label={{ value: 'Patches Applied', position: 'insideBottom', offset: -2, fill: '#71717A', fontSize: 10 }}
           />
           <YAxis

@@ -18,6 +18,7 @@ import type {
   Service, Dependency, Vulnerability, Severity,
   ComplianceFramework, MaintenanceWindow
 } from '../engine/types'
+import { getCalibration } from '../engine/calibration'
 
 // ─── Public Types ─────────────────────────────────────────────
 
@@ -1470,7 +1471,7 @@ function parseDockerComposeDeps(projectDir: string, services: DiscoveredService[
             from: fromId,
             to: toId,
             type: 'api',
-            propagationWeight: 0.7,
+            propagationWeight: getCalibration().dependencyTypeWeights.api,
             description: `${from} depends_on ${to} (docker-compose)`
           })
         }
@@ -1513,7 +1514,7 @@ function inferDepsFromEnvVars(services: DiscoveredService[]): Dependency[] {
             from: service.id,
             to: dbService.id,
             type: 'data',
-            propagationWeight: 0.8,
+            propagationWeight: getCalibration().dependencyTypeWeights.data,
             description: `${service.name} connects to ${dbService.name} via ${key}`
           })
         }
@@ -1535,7 +1536,7 @@ function inferDepsFromEnvVars(services: DiscoveredService[]): Dependency[] {
             from: service.id,
             to: authService.id,
             type: 'auth',
-            propagationWeight: 0.8,
+            propagationWeight: getCalibration().dependencyTypeWeights.auth,
             description: `${service.name} authenticates via ${authService.name}`
           })
         }
@@ -1551,7 +1552,7 @@ function inferDepsFromEnvVars(services: DiscoveredService[]): Dependency[] {
               from: service.id,
               to: other.id,
               type: 'api',
-              propagationWeight: 0.6,
+              propagationWeight: getCalibration().dependencyTypeWeights.api * 0.85,
               description: `${service.name} references ${other.name} in env var ${key}`
             })
           }
@@ -1601,7 +1602,7 @@ function inferDatabaseDeps(services: DiscoveredService[]): Dependency[] {
           from: service.id,
           to: db.id,
           type: 'data',
-          propagationWeight: 0.85,
+          propagationWeight: getCalibration().dependencyTypeWeights.data,
           description: `${service.name} uses database client packages`
         })
       }
@@ -1645,7 +1646,7 @@ function inferAuthDeps(services: DiscoveredService[]): Dependency[] {
           from: service.id,
           to: auth.id,
           type: 'auth',
-          propagationWeight: 0.75,
+          propagationWeight: getCalibration().dependencyTypeWeights.auth,
           description: `${service.name} uses auth-related packages`
         })
       }
@@ -1874,13 +1875,22 @@ function osvToVulnerability(
     }
   }
 
-  // Check for known exploit references
-  const knownExploit = osv.references?.some(r =>
+  // Check for known exploit references (ExploitDB, PoC, Metasploit)
+  const hasPublicExploit = osv.references?.some(r =>
     r.type === 'EVIDENCE' ||
-    r.url?.includes('exploit') ||
+    r.url?.includes('exploit-db') ||
+    r.url?.includes('exploitdb') ||
     r.url?.includes('poc') ||
-    r.url?.includes('metasploit')
+    r.url?.includes('metasploit') ||
+    r.url?.includes('github.com') && r.url?.includes('exploit')
   ) ?? false
+
+  const knownExploit = hasPublicExploit || (osv.references?.some(r =>
+    r.url?.includes('exploit') || r.url?.includes('poc')
+  ) ?? false)
+
+  // Parse CVSS attack vector from severity string (e.g., "CVSS:3.1/AV:N/..." → 'network')
+  const attackVector = parseAttackVector(osv)
 
   return {
     id: `vuln-${String(index).padStart(3, '0')}`,
@@ -1894,13 +1904,16 @@ function osvToVulnerability(
     affectedServiceIds: [...serviceIds],
     affectedPackage: `${pkg.name}@${pkg.version}`,
     patchedVersion,
-    remediationCost: estimateRemediationCost(severity),
+    remediationCost: estimateRemediationCost(severity, `${pkg.name}@${pkg.version}`, patchedVersion),
     remediationDowntime: estimateDowntime(severity),
     complexity: cvss >= 8 ? 'high' : cvss >= 5 ? 'medium' : 'low',
     status: 'open',
     patchOrder: null,
     constraints: [],
     knownExploit,
+    inKev: false, // Will be enriched by KEV lookup if available
+    attackVector,
+    hasPublicExploit,
     complianceViolations: [],
     complianceDeadlineDays: null
   }
@@ -2105,12 +2118,39 @@ function estimateExploitProb(cvss: number, knownExploit: boolean): number {
   return knownExploit ? Math.min(0.95, base * 2) : base
 }
 
-function estimateRemediationCost(severity: Severity): number {
-  switch (severity) {
-    case 'critical': return 4
-    case 'high': return 3
-    case 'medium': return 2
-    case 'low': return 1
+/**
+ * Estimate remediation cost based on the version jump required.
+ *
+ * Heuristic:
+ * - Minor/patch version bump (1.2.3 → 1.2.4): low effort, usually backwards-compatible
+ * - Major version bump (1.x → 2.x): significant effort, likely API changes
+ * - Breaking change keywords in severity context: highest effort
+ * - No patch available: flag as mitigation-only (most expensive)
+ *
+ * Falls back to severity-based estimate when version info is unavailable.
+ */
+function estimateRemediationCost(severity: Severity, currentVersion?: string, patchedVersion?: string): number {
+  const cal = getCalibration()
+
+  if (!currentVersion || !patchedVersion || patchedVersion === 'unknown') {
+    if (patchedVersion === 'unknown' || !patchedVersion) {
+      return cal.patchingCosts.mitigateOnly
+    }
+    return cal.patchingCosts.fallback
+  }
+
+  const bump = classifyVersionBump(currentVersion, patchedVersion)
+  switch (bump) {
+    case 'patch':
+    case 'minor':
+      return cal.patchingCosts.minorBump
+    case 'major':
+      return cal.patchingCosts.majorBump
+    case 'breaking':
+      return cal.patchingCosts.breakingChange
+    case 'unknown':
+    default:
+      return cal.patchingCosts.fallback
   }
 }
 
@@ -2121,6 +2161,52 @@ function estimateDowntime(severity: Severity): number {
     case 'medium': return 10
     case 'low': return 5
   }
+}
+
+/**
+ * Classify the type of version bump required.
+ *
+ * Parses semver-style versions from package strings like "express@4.18.2"
+ * and compares against the patched version.
+ */
+function classifyVersionBump(current: string, patched: string): 'patch' | 'minor' | 'major' | 'breaking' | 'unknown' {
+  const extractVersion = (s: string): [number, number, number] | null => {
+    // Handle "pkg@version" and bare "version" formats
+    const versionStr = s.includes('@') ? s.split('@').pop()! : s
+    const match = versionStr.match(/(\d+)\.(\d+)\.(\d+)/)
+    if (!match) return null
+    return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])]
+  }
+
+  const cur = extractVersion(current)
+  const pat = extractVersion(patched)
+  if (!cur || !pat) return 'unknown'
+
+  const [curMajor, curMinor] = cur
+  const [patMajor, patMinor] = pat
+
+  if (patMajor > curMajor) {
+    // Major version jump of 2+ is almost certainly breaking
+    return (patMajor - curMajor) >= 2 ? 'breaking' : 'major'
+  }
+  if (patMinor > curMinor) return 'minor'
+  return 'patch'
+}
+
+/**
+ * Parse the CVSS attack vector from OSV severity data.
+ * Looks for "AV:N" (network), "AV:A" (adjacent), "AV:L" (local), "AV:P" (physical)
+ * in the CVSS vector string.
+ */
+function parseAttackVector(osv: OsvVuln): 'network' | 'adjacent' | 'local' | 'physical' | 'unknown' {
+  for (const sev of (osv.severity ?? [])) {
+    const score = typeof sev.score === 'string' ? sev.score : ''
+    if (score.includes('AV:N')) return 'network'
+    if (score.includes('AV:A')) return 'adjacent'
+    if (score.includes('AV:L')) return 'local'
+    if (score.includes('AV:P')) return 'physical'
+  }
+  return 'unknown'
 }
 
 // ─── Scan Snapshot for Incremental Scanning ──────────────────

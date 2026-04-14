@@ -1,0 +1,12 @@
+{
+  "name": "vulnerable-test-app",
+  "version": "1.0.0",
+  "description": "Test fixture with known vulnerable packages",
+  "dependencies": {
+    "express": "4.17.1",
+    "axios": "0.21.1",
+    "lodash": "4.17.20",
+    "jsonwebtoken": "8.5.1",
+    "minimatch": "3.0.4"
+  }
+}

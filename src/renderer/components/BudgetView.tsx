@@ -1,10 +1,21 @@
+import { useState } from 'react'
 import { useAnalysisStore } from '../stores/analysisStore'
 import RiskReductionCurve from './charts/RiskReductionCurve'
 import ParetoFrontier from './charts/ParetoFrontier'
-import SeverityDonut from './charts/SeverityDonut'
+import ScheduleTab from './tabs/ScheduleTab'
+import WhatIfTab from './tabs/WhatIfTab'
+
+type Tab = 'overview' | 'schedule' | 'whatif'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'schedule', label: 'Schedule' },
+  { id: 'whatif', label: 'What-If' },
+]
 
 export default function BudgetView() {
   const result = useAnalysisStore(s => s.result)
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
 
   if (!result) {
     return (
@@ -23,52 +34,63 @@ export default function BudgetView() {
     )
   }
 
-  const { simulation, pareto, graph } = result
-  const totalRiskBefore = Math.round(simulation.totalRiskBefore * 100)
-  const totalRiskAfter = Math.round(simulation.totalRiskAfter * 100)
-  const riskReduction = Math.round(simulation.riskReduction)
-  const totalPatchCost = graph.vulnerabilities.reduce((s, v) => s + v.remediationCost, 0)
-  const totalDowntime = graph.vulnerabilities.reduce((s, v) => s + v.remediationDowntime, 0)
-
   return (
-    <div className="h-full flex flex-col px-6 pb-6 overflow-y-auto">
-      {/* Header */}
-      <div className="mb-6">
+    <div className="h-full flex flex-col px-6 pb-6 overflow-hidden">
+      {/* Header + Tabs */}
+      <div className="mb-4 shrink-0">
         <h1 className="text-xl font-bold text-white mb-1">Risk Analysis</h1>
-        <p className="text-sm text-surface-500">
+        <p className="text-sm text-surface-500 mb-4">
           Bayesian propagation &middot; Monte Carlo simulation &middot; Pareto optimization
         </p>
+        <div className="flex items-center gap-1 border-b border-surface-800">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-xs font-bold transition-all relative ${
+                activeTab === tab.id
+                  ? 'text-white'
+                  : 'text-surface-500 hover:text-surface-300'
+              }`}
+            >
+              {tab.label}
+              {activeTab === tab.id && (
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-sage-500 rounded-t" />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Top stats */}
-      <div className="grid grid-cols-5 gap-3 mb-6">
-        {[
-          { label: 'Risk Before', value: `${totalRiskBefore}%`, color: 'text-red-400' },
-          { label: 'Risk After', value: `${totalRiskAfter}%`, color: 'text-green-400' },
-          { label: 'Reduction', value: `-${riskReduction}%`, color: 'text-green-400' },
-          { label: 'Total Patch Cost', value: `${totalPatchCost}h`, color: 'text-amber-400' },
-          { label: 'Total Downtime', value: `${totalDowntime}m`, color: 'text-blue-400' },
-        ].map((stat, i) => (
-          <div key={stat.label} className={`bg-surface-900 border border-surface-800 rounded-card p-4 text-center card-hover animate-slideUp stagger-${i + 1}`}>
-            <div className={`text-2xl font-black ${stat.color}`}>{stat.value}</div>
-            <div className="text-[10px] text-surface-500 uppercase font-bold mt-1">{stat.label}</div>
-          </div>
-        ))}
+      {/* Tab Content */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'schedule' && <ScheduleTab />}
+        {activeTab === 'whatif' && <WhatIfTab />}
       </div>
+    </div>
+  )
+}
 
+// ─── Overview Tab (original BudgetView content) ──────────────
+function OverviewTab() {
+  const result = useAnalysisStore(s => s.result)!
+  const { graph } = result
+
+  return (
+    <>
       {/* Risk Reduction Curve */}
-      <div className="mb-6 animate-slideUp stagger-6">
+      <div className="mb-6 animate-slideUp stagger-1">
         <RiskReductionCurve />
       </div>
 
-      {/* Pareto + Donut side by side */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="animate-slideUp stagger-7"><ParetoFrontier /></div>
-        <div className="animate-slideUp stagger-8"><SeverityDonut /></div>
+      {/* Pareto Frontier */}
+      <div className="mb-6 animate-slideUp stagger-2">
+        <ParetoFrontier />
       </div>
 
-      {/* Detailed Risk Scores */}
-      <div className="bg-surface-900 border border-surface-800 rounded-card p-4 mb-6">
+      {/* Bayesian Risk Scores by Service */}
+      <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
         <h3 className="text-sm font-bold text-white mb-3">Bayesian Risk Scores by Service</h3>
         <div className="grid gap-2">
           {graph.services
@@ -107,29 +129,6 @@ export default function BudgetView() {
             })}
         </div>
       </div>
-
-      {/* Engine Metadata */}
-      <div className="bg-surface-900 border border-surface-800 rounded-card p-4">
-        <h3 className="text-sm font-bold text-white mb-3">Simulation Metadata</h3>
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <div className="text-lg font-black text-white">{simulation.iterations.toLocaleString()}</div>
-            <div className="text-[10px] text-surface-500">MC Iterations</div>
-          </div>
-          <div>
-            <div className="text-lg font-black text-white">{Math.round(simulation.convergenceScore * 100)}%</div>
-            <div className="text-[10px] text-surface-500">Convergence</div>
-          </div>
-          <div>
-            <div className="text-lg font-black text-white">{pareto.frontierIds.length}</div>
-            <div className="text-[10px] text-surface-500">Pareto Solutions</div>
-          </div>
-          <div>
-            <div className="text-lg font-black text-white">{pareto.solutions.length}</div>
-            <div className="text-[10px] text-surface-500">Total Candidates</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   )
 }

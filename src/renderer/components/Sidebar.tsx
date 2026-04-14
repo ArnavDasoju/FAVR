@@ -1,6 +1,7 @@
 import { useAnalysisStore } from '../stores/analysisStore'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 
-type View = 'dashboard' | 'vulnerabilities' | 'analysis' | 'comparison' | 'schedule' | 'whatif' | 'settings'
+type View = 'dashboard' | 'vulnerabilities' | 'analysis' | 'workspace' | 'settings'
 
 interface SidebarProps {
   activeView: View
@@ -33,31 +34,15 @@ const navItems: { id: View; label: string; shortcut: string; icon: (active: bool
     )
   },
   {
-    id: 'comparison', label: 'Comparison', shortcut: '4',
-    icon: (a) => (
+    id: 'workspace' as View, label: 'Workspace', shortcut: '4',
+    icon: (a: boolean) => (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
     )
   },
   {
-    id: 'schedule', label: 'Schedule', shortcut: '5',
-    icon: (a) => (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    )
-  },
-  {
-    id: 'whatif', label: 'What-If', shortcut: '6',
-    icon: (a) => (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    )
-  },
-  {
-    id: 'settings', label: 'Settings', shortcut: '7',
+    id: 'settings', label: 'Settings', shortcut: '5',
     icon: (a) => (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -70,6 +55,7 @@ const navItems: { id: View; label: string; shortcut: string; icon: (active: bool
 export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const result = useAnalysisStore(s => s.result)
   const phase = useAnalysisStore(s => s.phase)
+  const workspaceStatus = useWorkspaceStore(s => s.status)
 
   const totalRisk = result
     ? Math.round(result.simulation.totalRiskBefore * 100)
@@ -80,22 +66,39 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const vulnCount = result?.graph.vulnerabilities.length ?? 0
   const criticalCount = result?.graph.vulnerabilities.filter(v => v.severity === 'critical').length ?? 0
 
-  const riskColor = totalRisk > 70 ? 'bg-red-500' : totalRisk > 40 ? 'bg-amber-500' : 'bg-green-500'
-  const riskTextColor = totalRisk > 70 ? 'text-red-400' : totalRisk > 40 ? 'text-amber-400' : 'text-green-400'
+  const riskColor = totalRisk > 70 ? 'bg-[#D76B5A]' : totalRisk > 40 ? 'bg-[#E0953F]' : 'bg-sage-400'
+  const riskTextColor = totalRisk > 70 ? 'text-[#E8927F]' : totalRisk > 40 ? 'text-[#EEB87B]' : 'text-sage-300'
 
   return (
-    <div className="w-56 h-full bg-surface-950 border-r border-surface-800/50 flex flex-col transition-all">
+    <div className="w-60 h-full flex flex-col relative bg-gradient-to-b from-cream-50 via-cream-100 to-cream-200 border-r border-sage-500/20">
+      {/* Subtle sage glow on the right edge */}
+      <div
+        className="absolute top-0 right-0 w-px h-full pointer-events-none"
+        style={{ background: 'linear-gradient(to bottom, transparent, rgba(130,169,104,0.35) 40%, transparent)' }}
+      />
+
       {/* Titlebar drag region */}
       <div className="titlebar-drag h-12 shrink-0" />
 
       {/* Logo */}
-      <div className="px-5 pb-4 flex items-center gap-2">
-        <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center">
-          <span className="text-xs font-black text-black tracking-tighter">F</span>
-        </div>
-        <div>
-          <span className="text-lg font-black tracking-tight text-white">FAVR</span>
-          <span className="text-[9px] text-surface-600 ml-1.5 font-mono">v1.0</span>
+      <div className="px-5 pb-5 flex items-center gap-2.5">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 32 32"
+          className="shrink-0"
+          aria-label="FAVR"
+        >
+          {/* Stem */}
+          <rect x="7" y="6" width="3" height="20" fill="#405935" />
+          {/* Top bar */}
+          <rect x="7" y="6" width="17" height="3" fill="#405935" />
+          {/* Mid bar — shorter, slightly offset */}
+          <rect x="7" y="14" width="11" height="3" fill="#82a968" />
+        </svg>
+        <div className="flex flex-col leading-none">
+          <span className="text-[17px] font-black tracking-tight text-surface-100 font-display">FAVR</span>
+          <span className="text-[9px] text-sage-600 font-mono tracking-[0.2em] uppercase mt-0.5">v1.0 · sage</span>
         </div>
       </div>
 
@@ -107,26 +110,35 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-btn text-left transition-all duration-200 relative group ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-btn text-left transition-all duration-200 relative group ${
                 isActive
-                  ? 'bg-surface-800 text-white'
-                  : 'text-surface-400 hover:text-white hover:bg-surface-900 hover:translate-x-0.5'
+                  ? 'text-sage-700 bg-gradient-to-r from-sage-500/15 via-sage-500/8 to-transparent border border-sage-500/30 shadow-inner-warm'
+                  : 'text-surface-200 hover:text-sage-700 hover:bg-cream-50 hover:translate-x-0.5 border border-transparent'
               }`}
             >
               {isActive && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-white rounded-r-full animate-scaleIn" />
+                <span
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full animate-scaleIn"
+                  style={{
+                    background: 'linear-gradient(to bottom,#82a968,#405935)',
+                    boxShadow: '0 0 10px rgba(106,143,84,0.55)'
+                  }}
+                />
               )}
-              <span className={`shrink-0 transition-colors ${isActive ? 'text-white' : 'text-surface-500 group-hover:text-surface-300'}`}>
+              <span className={`shrink-0 transition-colors ${isActive ? 'text-sage-600' : 'text-surface-300 group-hover:text-sage-600'}`}>
                 {item.icon(isActive)}
               </span>
               <span className="text-[13px] font-semibold flex-1">{item.label}</span>
               {/* Badge / indicator */}
-              <span className="text-[10px] font-mono text-surface-600">
+              <span className="text-[10px] font-mono text-surface-500">
                 {item.id === 'vulnerabilities' && vulnCount > 0 ? (
-                  <span className="bg-surface-800 text-surface-400 px-1.5 py-0.5 rounded text-[9px] font-bold">{vulnCount}</span>
+                  <span className="bg-cream-300 text-surface-200 px-1.5 py-0.5 rounded text-[9px] font-bold">{vulnCount}</span>
+                ) : null}
+                {item.id === 'workspace' && (workspaceStatus === 'running' || workspaceStatus === 'paused') ? (
+                  <span className="w-2 h-2 rounded-full bg-sage-500 animate-pulse" />
                 ) : null}
                 {item.id === 'analysis' && phase === 'complete' ? (
-                  <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <svg className="w-3.5 h-3.5 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 ) : null}
@@ -139,33 +151,33 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* Risk summary */}
       {result && (
         <div className="px-4 pb-5 animate-slideUp">
-          <div className="bg-surface-900 border border-surface-800 rounded-card p-3 flex flex-col gap-2 card-hover">
+          <div className="glass-card rounded-card p-3.5 flex flex-col gap-2 card-hover">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-surface-500 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-surface-400 uppercase tracking-wider">
                 System Risk
               </span>
               <span className={`text-xs font-black ${riskTextColor}`}>{totalRisk}%</span>
             </div>
-            <div className="w-full h-1.5 bg-surface-800 rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-cream-300 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-700 ease-out ${riskColor}`}
                 style={{ width: `${Math.min(totalRisk, 100)}%` }}
               />
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-surface-500">{vulnCount} vuln{vulnCount !== 1 ? 's' : ''}</span>
-              <span className="text-[10px] text-green-400 font-bold">-{riskReduction}% after fix</span>
+              <span className="text-[10px] text-surface-400">{vulnCount} vuln{vulnCount !== 1 ? 's' : ''}</span>
+              <span className="text-[10px] text-sage-600 font-bold">-{riskReduction}% after fix</span>
             </div>
             {criticalCount > 0 && (
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400 status-blink" />
-                <span className="text-[10px] text-red-400 font-bold">{criticalCount} critical</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#B4432E] status-blink" />
+                <span className="text-[10px] text-[#B4432E] font-bold">{criticalCount} critical</span>
               </div>
             )}
             {result.complianceSummary && result.complianceSummary.violations.some(v => v.urgentCount > 0) && (
               <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 status-blink" />
-                <span className="text-[10px] text-purple-400 font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#8a6fbf] status-blink" />
+                <span className="text-[10px] text-[#8a6fbf] font-bold">
                   {result.complianceSummary.violations.reduce((s, v) => s + v.urgentCount, 0)} urgent compliance
                 </span>
               </div>

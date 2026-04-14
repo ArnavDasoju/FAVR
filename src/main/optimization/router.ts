@@ -16,7 +16,7 @@ export interface ModelCapability {
   available: boolean
 }
 
-const DEFAULT_MODELS: ModelCapability[] = [
+export const DEFAULT_MODELS: ModelCapability[] = [
   {
     model: 'ollama/llama3',
     costPer1kTokens: 0,
@@ -93,6 +93,13 @@ export class ModelRouter {
     const tokens = tokenEstimates[complexity]
 
     return (tokens / 1000) * capability.costPer1kTokens
+  }
+
+  /**
+   * Get all model capabilities (for budget optimizer).
+   */
+  getModels(): ModelCapability[] {
+    return [...this.models]
   }
 
   /**

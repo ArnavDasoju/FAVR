@@ -58,6 +58,9 @@ export interface Vulnerability {
   patchOrder: number | null     // assigned after Monte Carlo
   constraints: VulnConstraint[]
   knownExploit: boolean         // is there a known exploit in the wild?
+  inKev: boolean                // is this CVE in CISA's Known Exploited Vulnerabilities catalog?
+  attackVector: 'network' | 'adjacent' | 'local' | 'physical' | 'unknown'  // CVSS attack vector
+  hasPublicExploit: boolean     // PoC or exploit code publicly available (ExploitDB, GitHub)
   complianceViolations: ComplianceFramework[]  // which frameworks this CVE violates
   complianceDeadlineDays: number | null  // days until compliance violation if unpatched
 }
@@ -93,6 +96,23 @@ export interface SimulationResult {
   riskReduction: number         // percentage reduction
   iterations: number
   convergenceScore: number      // 0-1, how stable the ordering is
+  /** Risk distribution from Monte Carlo: 5th/95th percentile bounds */
+  riskConfidence: {
+    /** Mean risk before patching */
+    meanBefore: number
+    /** 5th percentile (lower bound) risk before patching */
+    lowerBefore: number
+    /** 95th percentile (upper bound) risk before patching */
+    upperBefore: number
+    /** Mean risk after all patches */
+    meanAfter: number
+    /** Lower bound risk after all patches */
+    lowerAfter: number
+    /** Upper bound risk after all patches */
+    upperAfter: number
+    /** Per-step confidence bands: [lower, mean, upper] at each patch step */
+    curveBands: [number, number, number][]
+  }
 }
 
 export interface ConfidenceInterval {

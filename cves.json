@@ -1,0 +1,116 @@
+{
+  "cves": [
+    {
+      "cve_id": "CVE-FAKE-2026-0001",
+      "severity": "CRITICAL",
+      "cvss_score": 9.8,
+      "epss_score": 0.04,
+      "description": "Critical local deserialization issue in lodash utility chain.",
+      "affected_packages": [
+        { "name": "lodash", "version": "4.17.15" }
+      ],
+      "affected_services": ["Analytics Service"],
+      "kev": false,
+      "exploit_available": false,
+      "attack_vector": "LOCAL"
+    },
+    {
+      "cve_id": "CVE-FAKE-2026-0002",
+      "severity": "HIGH",
+      "cvss_score": 8.1,
+      "epss_score": 0.91,
+      "description": "Remote code execution in express middleware through crafted JSON body parsing.",
+      "affected_packages": [
+        { "name": "express", "version": "4.17.1" }
+      ],
+      "affected_services": ["Payment API"],
+      "kev": true,
+      "exploit_available": true,
+      "attack_vector": "NETWORK"
+    },
+    {
+      "cve_id": "CVE-FAKE-2026-0003",
+      "severity": "HIGH",
+      "cvss_score": 8.4,
+      "epss_score": 0.73,
+      "description": "Authentication bypass in passport session validation under malformed token replay.",
+      "affected_packages": [
+        { "name": "passport", "version": "0.6.0" }
+      ],
+      "affected_services": ["Auth Service"],
+      "kev": false,
+      "exploit_available": true,
+      "attack_vector": "NETWORK"
+    },
+    {
+      "cve_id": "CVE-FAKE-2026-0004",
+      "severity": "MEDIUM",
+      "cvss_score": 6.5,
+      "epss_score": 0.67,
+      "description": "Reflected XSS in React admin rendering flow through unsafe report preview.",
+      "affected_packages": [
+        { "name": "react", "version": "18.2.0" }
+      ],
+      "affected_services": ["Customer Portal"],
+      "kev": false,
+      "exploit_available": true,
+      "attack_vector": "NETWORK"
+    },
+    {
+      "cve_id": "CVE-FAKE-2026-0005",
+      "severity": "HIGH",
+      "cvss_score": 7.9,
+      "epss_score": 0.12,
+      "description": "Privilege escalation in PostgreSQL extension loading path requiring local authenticated access.",
+      "affected_packages": [
+        { "name": "postgresql", "version": "14.5" }
+      ],
+      "affected_services": ["Payment API", "Auth Service"],
+      "kev": false,
+      "exploit_available": false,
+      "attack_vector": "LOCAL"
+    },
+    {
+      "cve_id": "CVE-FAKE-2026-0006",
+      "severity": "MEDIUM",
+      "cvss_score": 5.9,
+      "epss_score": 0.52,
+      "description": "Denial of service in Redis request parsing causing elevated CPU usage under repeated malformed input.",
+      "affected_packages": [
+        { "name": "redis", "version": "7.0.8" }
+      ],
+      "affected_services": ["Notification Service", "Analytics Service"],
+      "kev": false,
+      "exploit_available": true,
+      "attack_vector": "NETWORK"
+    },
+    {
+      "cve_id": "CVE-FAKE-2026-0007",
+      "severity": "LOW",
+      "cvss_score": 3.8,
+      "epss_score": 0.36,
+      "description": "Information disclosure in nginx error page handling under uncommon upstream timeout behavior.",
+      "affected_packages": [
+        { "name": "nginx", "version": "1.23.3" }
+      ],
+      "affected_services": ["Customer Portal"],
+      "kev": false,
+      "exploit_available": false,
+      "attack_vector": "NETWORK"
+    },
+    {
+      "cve_id": "CVE-FAKE-2026-0008",
+      "severity": "CRITICAL",
+      "cvss_score": 9.3,
+      "epss_score": 0.88,
+      "description": "Remote code execution in Flask debug-adjacent request handling path exposed by misconfiguration.",
+      "affected_packages": [
+        { "name": "flask", "version": "2.2.2" }
+      ],
+      "affected_services": ["Internal Admin API"],
+      "kev": true,
+      "exploit_available": true,
+      "attack_vector": "NETWORK"
+    }
+  ]
+}

@@ -12,7 +12,7 @@
  */
 
 import type { AttackGraph, Vulnerability, ParetoSolution, ParetoFrontier } from './types'
-import { propagateRisk, computeTotalRiskFromScores } from './bayesian'
+import { propagateRisk, computeTotalRiskFromScores, effectiveExploitProb } from './bayesian'
 
 /**
  * Find the Pareto frontier by evaluating different subsets of patches
@@ -165,7 +165,7 @@ function evaluateSubset(
     if (remainingVulns.length === 0) {
       service.baseCompromiseProbability = 0
     } else {
-      const survival = remainingVulns.reduce((acc, v) => acc * (1 - v.exploitProbability), 1)
+      const survival = remainingVulns.reduce((acc, v) => acc * (1 - effectiveExploitProb(v)), 1)
       service.baseCompromiseProbability = 1 - survival
     }
   }
