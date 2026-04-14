@@ -1,3 +1,5 @@
+
+
 # FAVR Remediation Workspace — Parallel Task Breakdown
 
 > **Goal:** After FAVR scans a codebase and produces an optimal patch order, users enter a **Remediation Workspace** where AI agents are dispatched via OpenRouter to fix vulnerabilities. The workspace shows live agent cards, uses statistics to assign the best agent per issue, and optimizes agent selection under a user-defined budget.
