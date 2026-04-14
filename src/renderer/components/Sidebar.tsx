@@ -1,6 +1,7 @@
 import { useAnalysisStore } from '../stores/analysisStore'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 
-type View = 'dashboard' | 'vulnerabilities' | 'analysis' | 'settings'
+type View = 'dashboard' | 'vulnerabilities' | 'analysis' | 'workspace' | 'settings'
 
 interface SidebarProps {
   activeView: View
@@ -33,7 +34,15 @@ const navItems: { id: View; label: string; shortcut: string; icon: (active: bool
     )
   },
   {
-    id: 'settings', label: 'Settings', shortcut: '4',
+    id: 'workspace' as View, label: 'Workspace', shortcut: '4',
+    icon: (a: boolean) => (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    )
+  },
+  {
+    id: 'settings', label: 'Settings', shortcut: '5',
     icon: (a) => (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -46,6 +55,7 @@ const navItems: { id: View; label: string; shortcut: string; icon: (active: bool
 export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const result = useAnalysisStore(s => s.result)
   const phase = useAnalysisStore(s => s.phase)
+  const workspaceStatus = useWorkspaceStore(s => s.status)
 
   const totalRisk = result
     ? Math.round(result.simulation.totalRiskBefore * 100)
@@ -123,6 +133,9 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
               <span className="text-[10px] font-mono text-surface-500">
                 {item.id === 'vulnerabilities' && vulnCount > 0 ? (
                   <span className="bg-cream-300 text-surface-200 px-1.5 py-0.5 rounded text-[9px] font-bold">{vulnCount}</span>
+                ) : null}
+                {item.id === 'workspace' && (workspaceStatus === 'running' || workspaceStatus === 'paused') ? (
+                  <span className="w-2 h-2 rounded-full bg-sage-500 animate-pulse" />
                 ) : null}
                 {item.id === 'analysis' && phase === 'complete' ? (
                   <svg className="w-3.5 h-3.5 text-sage-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
