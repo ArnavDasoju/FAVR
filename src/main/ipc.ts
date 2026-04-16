@@ -24,6 +24,17 @@ import { getFreshness, clearVulnCache } from './ingest/vuln-data-pipeline'
 import { optimizeAgentAssignments } from './optimization/budget-optimizer'
 import { agentStatsTracker } from './optimization/agent-stats'
 import { WorkspaceSession, getActiveSession, setActiveSession } from './agents/workspace-session'
+import { patchManifest } from './agents/manifest-patcher'
+import { runVerification } from './verification/verifier'
+
+// Split "pkg@version" on the LAST '@' so scoped npm names like
+// "@types/node@1.2.3" parse correctly.
+function splitPackageRef(ref: string): { name: string; version: string } {
+  if (!ref) return { name: '', version: '' }
+  const idx = ref.lastIndexOf('@')
+  if (idx <= 0) return { name: ref, version: '' }
+  return { name: ref.slice(0, idx), version: ref.slice(idx + 1) }
+}
 
 // Store the latest analysis result for quick access
 let latestAnalysis: AnalysisResult | null = null
@@ -561,6 +572,26 @@ export function setupIpc(): void {
         reasoning: routing.reasoning
       })
 
+      // Tier 1 — deterministic manifest patch. Most CVEs are just version bumps;
+      // do the edit directly instead of round-tripping through an LLM.
+      const { name: pkgName } = splitPackageRef(vuln.affectedPackage)
+      const { version: targetVersion } = splitPackageRef(vuln.patchedVersion ?? '')
+      if (pkgName && targetVersion) {
+        const patch = patchManifest(codebasePath, pkgName, targetVersion)
+        if (patch.success) {
+          results.push({ cveId, success: true })
+          emit('fix:vulnDone', {
+            index: i,
+            cveId,
+            success: true,
+            changedFiles: patch.changedFiles
+          })
+          continue
+        }
+      }
+
+      // Tier 2 — fall back to the LLM when we couldn't find a matching manifest
+      // (unusual case, or the fix genuinely requires code changes).
       try {
         const agentId = await agentManager.spawn(subtask, codebasePath)
         const agent = agentManager.getAgent(agentId)
@@ -758,6 +789,12 @@ export function setupIpc(): void {
     if (!session) throw new Error('No active workspace session')
     session.retryVuln(data.vulnId, data.model)
     return { vulnId: data.vulnId }
+  })
+
+  // ── Verification ────────────────────────────────────────────
+  ipcMain.handle('verify:run', async (_event, data: { codebasePath: string }) => {
+    if (!data?.codebasePath) throw new Error('codebasePath is required')
+    return runVerification(data.codebasePath)
   })
 
   ipcMain.handle('workspace:state', async () => {

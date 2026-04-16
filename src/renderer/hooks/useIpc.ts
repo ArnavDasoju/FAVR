@@ -5,6 +5,8 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { useAnalysisStore } from '../stores/analysisStore'
+import { useFixStore } from '../stores/fixStore'
+import { useVerifyStore } from '../stores/verifyStore'
 import type { Task, Agent, AgentStatus, PipelineEvent, Project, FavrAnalysisProgress, FavrAnalysisResult } from '@shared/types'
 
 export function useIpcListeners() {
@@ -174,6 +176,56 @@ export function useIpcListeners() {
     unsubs.push(
       window.api.on('analysis:error', (data: unknown) => {
         useAnalysisStore.getState().setError(data as string)
+      })
+    )
+
+    // Fix-All session events — kept at App root so they survive tab switches.
+    unsubs.push(
+      window.api.on('fix:started', (data: unknown) => {
+        const { canUndo } = data as { total: number; canUndo: boolean }
+        const fix = useFixStore.getState()
+        fix.setPhase('patching')
+        fix.setCanUndo(canUndo)
+      })
+    )
+
+    unsubs.push(
+      window.api.on('fix:vulnStart', (data: unknown) => {
+        useFixStore.getState().upsertVulnStart(data as any)
+      })
+    )
+
+    unsubs.push(
+      window.api.on('fix:vulnDone', (data: unknown) => {
+        useFixStore.getState().markVulnDone(data as any)
+      })
+    )
+
+    unsubs.push(
+      window.api.on('fix:complete', (data: unknown) => {
+        const d = data as { succeeded: number; failed: number; canUndo: boolean }
+        const fix = useFixStore.getState()
+        fix.setPhase('done')
+        fix.setCanUndo(d.canUndo)
+      })
+    )
+
+    // Verification events
+    unsubs.push(
+      window.api.on('verify:started', (data: unknown) => {
+        const { steps, ecosystem } = data as { steps: any[]; ecosystem: string }
+        useVerifyStore.getState().start(steps, ecosystem)
+      })
+    )
+    unsubs.push(
+      window.api.on('verify:step', (data: unknown) => {
+        useVerifyStore.getState().updateStep(data as any)
+      })
+    )
+    unsubs.push(
+      window.api.on('verify:complete', (data: unknown) => {
+        const d = data as { allPassed: boolean; durationMs: number }
+        useVerifyStore.getState().complete(d.allPassed, d.durationMs)
       })
     )
 
