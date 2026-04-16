@@ -7,10 +7,20 @@
 
 import { BrowserWindow } from 'electron'
 import { agentManager } from './manager'
+import { patchManifest } from './manifest-patcher'
 import { agentStatsTracker, type ModelHistoryEntry } from '../optimization/agent-stats'
 import type { AgentAssignment } from '../optimization/budget-optimizer'
 import type { QueuedSubtask } from '../tasks/queue'
 import type { Vulnerability, Service } from '../engine/types'
+
+// Split "pkg@version" on the LAST '@' so scoped npm names like "@types/node@1.2.3"
+// parse correctly into name="@types/node", version="1.2.3".
+function splitPackageRef(ref: string): { name: string; version: string } {
+  if (!ref) return { name: '', version: '' }
+  const idx = ref.lastIndexOf('@')
+  if (idx <= 0) return { name: ref, version: '' }
+  return { name: ref.slice(0, idx), version: ref.slice(idx + 1) }
+}
 
 export type WorkspaceStatus = 'running' | 'paused' | 'complete' | 'cancelled'
 // Note: TypeScript needs all values in the union even though 'cancelled' is set
@@ -57,7 +67,6 @@ class WorkspaceSession {
   private active = new Map<string, {           // agentId → assignment info
     assignment: AgentAssignment
     startedAt: number
-    resolve: () => void
   }>()
   private results: WorkspaceAgentResult[] = []
 
@@ -103,10 +112,13 @@ class WorkspaceSession {
       skippedVulns: this.skippedVulns
     })
 
-    // Main dispatch loop: keep filling slots until queue is empty
-    const slotPromises: Promise<void>[] = []
+    // Main dispatch loop: keep filling slots until queue is empty.
+    // Track in-flight spawn promises so we can race them directly and remove
+    // entries as they settle — this is the only thing that lets the loop make
+    // forward progress past maxConcurrent.
+    const inFlight = new Map<string, Promise<void>>()
 
-    while (this.queue.length > 0 || this.active.size > 0) {
+    while (this.queue.length > 0 || inFlight.size > 0) {
       // Respect pause
       if (this.pausePromise) {
         await this.pausePromise
@@ -116,7 +128,7 @@ class WorkspaceSession {
       if (this.isCancelled()) break
 
       // Fill available slots
-      while (this.active.size < this.maxConcurrent && this.queue.length > 0) {
+      while (inFlight.size < this.maxConcurrent && this.queue.length > 0) {
         if (this.isCancelled()) break
 
         const assignment = this.queue.shift()!
@@ -134,19 +146,18 @@ class WorkspaceSession {
           continue
         }
 
-        // Spawn agent in a slot
-        const slotP = this.spawnAgent(assignment)
-        slotPromises.push(slotP)
+        // Spawn and track — use the assignment's vulnId as the key since the
+        // real agentId is minted inside spawnAgent.
+        const key = assignment.vulnId
+        const p = this.spawnAgent(assignment).finally(() => { inFlight.delete(key) })
+        inFlight.set(key, p)
       }
 
-      // Wait for any active agent to finish before trying to fill slots again
-      if (this.active.size > 0) {
-        await Promise.race(Array.from(this.active.values()).map(a => new Promise<void>(r => { a.resolve = r })))
+      // Wait for any in-flight agent to finish before trying to fill slots again.
+      if (inFlight.size > 0) {
+        await Promise.race(inFlight.values())
       }
     }
-
-    // Wait for any remaining in-flight agents
-    await Promise.allSettled(slotPromises)
 
     if (this.status !== 'cancelled') {
       this.status = 'complete'
@@ -180,8 +191,14 @@ class WorkspaceSession {
 
     const prompt = buildFixPrompt(vuln, serviceNames)
 
+    // Pre-generate the agentId so the agent manager reuses it. Without this,
+    // agentManager.spawn() mints its own UUID and every agent:output event is
+    // keyed on an ID the workspace store has never seen — the card stays stuck
+    // on "Waiting for output..." even though the agent is actually running.
+    const agentId = crypto.randomUUID()
+
     const subtask: QueuedSubtask = {
-      id: crypto.randomUUID(),
+      id: agentId,
       parentId: `workspace-${vuln.cveId}`,
       prompt,
       originalPrompt: prompt,
@@ -189,7 +206,7 @@ class WorkspaceSession {
       complexity: vuln.complexity,
       suggestedModel: null,
       assignedModel: assignment.assignedModel,
-      assignedAgentId: null,
+      assignedAgentId: agentId,
       status: 'running',
       retryCount: 0,
       maxRetries: 0,
@@ -203,24 +220,16 @@ class WorkspaceSession {
       gitStashed: false
     }
 
-    // Create a slot entry with a resolver that the dispatch loop awaits
-    let slotResolve: () => void
-    const slotPromise = new Promise<void>(r => { slotResolve = r })
-
-    // We'll use a temporary agentId until spawn returns the real one
-    const tempId = subtask.id
-
-    this.active.set(tempId, {
+    this.active.set(agentId, {
       assignment,
-      startedAt: Date.now(),
-      resolve: slotResolve!
+      startedAt: Date.now()
     })
 
     this.emit('workspace:agentSpawned', {
       sessionId: this.sessionId,
       vulnId: assignment.vulnId,
       cveId: assignment.cveId,
-      agentId: tempId,
+      agentId,
       model: assignment.assignedModel,
       estimatedCost: assignment.estimatedCost
     })
@@ -228,8 +237,40 @@ class WorkspaceSession {
     const agentStartTime = Date.now()
     let result: WorkspaceAgentResult
 
+    // ─── Tier 1: deterministic manifest patch ───────────────────
+    // For pure version bumps (most CVEs) we don't need an LLM at all. Try to
+    // bump the version directly in package.json / requirements.txt / etc.
+    // If that succeeds, skip the model entirely.
+    const { name: pkgName } = splitPackageRef(vuln.affectedPackage)
+    const { version: targetVersion } = splitPackageRef(vuln.patchedVersion ?? '')
+    if (pkgName && targetVersion) {
+      const patch = patchManifest(this.codebasePath, pkgName, targetVersion)
+      if (patch.success) {
+        this.emit('agent:output', { agentId, line: `> Deterministic patch: bumped ${pkgName} → ${targetVersion}` })
+        for (const f of patch.changedFiles) {
+          this.emit('agent:output', { agentId, line: `>   modified ${f}` })
+        }
+        this.emit('agent:status', { agentId, status: 'done', progress: 100 })
+
+        const durationMs = Date.now() - agentStartTime
+        result = {
+          vulnId: assignment.vulnId,
+          cveId: assignment.cveId,
+          agentId,
+          model: 'deterministic/manifest-patcher',
+          success: true,
+          actualCost: 0,
+          changedFiles: patch.changedFiles,
+          durationMs
+        }
+        await this.recordResult(result, assignment, 0)
+        return
+      }
+    }
+
+    // ─── Tier 2: LLM fallback ───────────────────────────────────
     try {
-      const agentId = await agentManager.spawn(subtask, this.codebasePath)
+      await agentManager.spawn(subtask, this.codebasePath)
       const agent = agentManager.getAgent(agentId)
       const success = agent?.status === 'done'
       const changedFiles = agent?.changedFiles ?? []
@@ -255,7 +296,7 @@ class WorkspaceSession {
       result = {
         vulnId: assignment.vulnId,
         cveId: assignment.cveId,
-        agentId: tempId,
+        agentId,
         model: assignment.assignedModel,
         success: false,
         actualCost: 0,
@@ -265,34 +306,39 @@ class WorkspaceSession {
       }
     }
 
-    // Record result
-    this.results.push(result)
-    this.spent += result.actualCost
+    await this.recordResult(result, assignment, result.actualCost)
+  }
 
-    // Record stats for the optimizer's learning
+  private async recordResult(
+    result: WorkspaceAgentResult,
+    assignment: AgentAssignment,
+    actualCost: number
+  ): Promise<void> {
+    this.results.push(result)
+    this.spent += actualCost
+
     const statsEntry: ModelHistoryEntry = {
       timestamp: Date.now(),
       vulnId: result.vulnId,
       cveId: result.cveId,
       complexity: assignment.complexity,
       severity: assignment.severity,
-      model: assignment.assignedModel,
+      model: result.model,
       success: result.success,
-      tokensUsed: 0, // not available from streaming — stats tracker handles this gracefully
-      cost: result.actualCost,
+      tokensUsed: 0,
+      cost: actualCost,
       durationMs: result.durationMs,
       changedFiles: result.changedFiles.length
     }
     agentStatsTracker.record(statsEntry)
 
-    // Emit events
     this.emit('workspace:agentDone', {
       sessionId: this.sessionId,
       agentId: result.agentId,
       vulnId: result.vulnId,
       cveId: result.cveId,
       success: result.success,
-      actualCost: result.actualCost,
+      actualCost,
       changedFiles: result.changedFiles,
       durationMs: result.durationMs,
       error: result.error
@@ -305,9 +351,7 @@ class WorkspaceSession {
       totalBudget: this.totalBudget
     })
 
-    // Free the slot and wake the dispatch loop
-    this.active.delete(tempId)
-    slotResolve!()
+    this.active.delete(result.agentId)
   }
 
   pause(): void {

@@ -1,32 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAnalysisStore } from '../stores/analysisStore'
 import { useAgentStore } from '../stores/agentStore'
+import { useFixStore, type FixPhase, type FixVulnRow } from '../stores/fixStore'
+import VerifyPanel, { useRunVerification } from './VerifyPanel'
+import { useVerifyStore } from '../stores/verifyStore'
 import DependencyGraph from './charts/DependencyGraph'
 import SeverityDonut from './charts/SeverityDonut'
 import MonteCarloViz from './MonteCarloViz'
 import type { AnalysisPhase } from '../../shared/types'
-
-// ─── Fix-All session types ──────────────────────────────────
-type FixPhase = 'idle' | 'patching' | 'done'
-
-interface FixVulnRow {
-  index: number
-  cveId: string
-  title: string
-  affectedPackage: string
-  patchedVersion: string
-  severity: string
-  complexity: 'low' | 'medium' | 'high'
-  model: string
-  displayName: string
-  provider: string
-  taskType: string
-  reasoning: string
-  status: 'pending' | 'running' | 'done' | 'failed'
-  agentId: string | null
-  changedFiles: string[]
-  error: string | null
-}
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'text-red-400 bg-red-500/10 border-red-500/30',
@@ -693,100 +674,26 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
     setClearingCache(false)
   }
 
-  // ─── Fix-All session state ───────────────────────────────────
-  const [fixPhase, setFixPhase] = useState<FixPhase>('idle')
-  const [fixVulns, setFixVulns] = useState<FixVulnRow[]>([])
-  const [fixCanUndo, setFixCanUndo] = useState(false)
+  // ─── Fix-All session state (lifted to store so it survives tab switches) ──
+  const fixPhase = useFixStore(s => s.phase)
+  const fixVulns = useFixStore(s => s.vulns)
+  const fixCanUndo = useFixStore(s => s.canUndo)
   const [undoing, setUndoing] = useState(false)
   const [rescanning, setRescanning] = useState(false)
   const agents = useAgentStore(s => s.agents)
-
-  useEffect(() => {
-    const unsubs: (() => void)[] = []
-
-    unsubs.push(window.api.on('fix:started', (data: unknown) => {
-      const { canUndo } = data as { total: number; canUndo: boolean }
-      setFixPhase('patching')
-      setFixCanUndo(canUndo)
-    }))
-
-    unsubs.push(window.api.on('fix:vulnStart', (data: unknown) => {
-      const d = data as {
-        index: number; cveId: string; title: string; affectedPackage: string
-        patchedVersion: string; severity: string; complexity: 'low' | 'medium' | 'high'; model: string
-        displayName?: string; provider?: string; taskType?: string; reasoning?: string
-      }
-      setFixVulns(prev => {
-        const next = [...prev]
-        while (next.length <= d.index) {
-          next.push({
-            index: next.length, cveId: '', title: '', affectedPackage: '', patchedVersion: '',
-            severity: 'low', complexity: 'low', model: '', displayName: '', provider: '',
-            taskType: '', reasoning: '', status: 'pending',
-            agentId: null, changedFiles: [], error: null
-          })
-        }
-        next[d.index] = {
-          ...next[d.index],
-          index: d.index,
-          cveId: d.cveId,
-          title: d.title,
-          affectedPackage: d.affectedPackage,
-          patchedVersion: d.patchedVersion,
-          severity: d.severity,
-          complexity: d.complexity,
-          model: d.model,
-          displayName: d.displayName ?? d.model.split('/').pop() ?? d.model,
-          provider: d.provider ?? '',
-          taskType: d.taskType ?? '',
-          reasoning: d.reasoning ?? '',
-          status: 'running'
-        }
-        return next
-      })
-    }))
-
-    unsubs.push(window.api.on('fix:vulnDone', (data: unknown) => {
-      const d = data as {
-        index: number; cveId: string; success: boolean; agentId?: string
-        changedFiles?: string[]; error?: string
-      }
-      setFixVulns(prev => {
-        const next = [...prev]
-        if (next[d.index]) {
-          next[d.index] = {
-            ...next[d.index],
-            status: d.success ? 'done' : 'failed',
-            agentId: d.agentId ?? null,
-            changedFiles: d.changedFiles ?? [],
-            error: d.error ?? null
-          }
-        }
-        return next
-      })
-    }))
-
-    unsubs.push(window.api.on('fix:complete', (data: unknown) => {
-      const d = data as { succeeded: number; failed: number; canUndo: boolean }
-      setFixPhase('done')
-      setFixCanUndo(d.canUndo)
-    }))
-
-    return () => { for (const u of unsubs) u() }
-  }, [])
 
   async function handleFixAll() {
     if (!codebasePath) {
       console.error('No codebase path — cannot fix')
       return
     }
-    setFixVulns([])
-    setFixPhase('patching')
+    useFixStore.getState().reset()
+    useFixStore.getState().setPhase('patching')
     try {
       await window.api.invoke('fix:all', { codebasePath })
     } catch (err) {
       console.error('fix:all failed:', err)
-      setFixPhase('done')
+      useFixStore.getState().setPhase('done')
     }
   }
 
@@ -794,9 +701,7 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
     setUndoing(true)
     try {
       await window.api.invoke('fix:undo')
-      setFixPhase('idle')
-      setFixVulns([])
-      setFixCanUndo(false)
+      useFixStore.getState().reset()
     } catch (err) {
       console.error('fix:undo failed:', err)
     }
@@ -809,8 +714,7 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
     try {
       useAnalysisStore.getState().reset()
       await window.api.invoke('analysis:analyzeCodebase', { codebasePath })
-      setFixPhase('idle')
-      setFixVulns([])
+      useFixStore.getState().reset()
     } catch (err) {
       console.error('rescan failed:', err)
     }
@@ -953,11 +857,14 @@ function ResultsDashboard({ result, totalRisk, vulnCount, urgentCompliance, scan
           canUndo={fixCanUndo}
           undoing={undoing}
           rescanning={rescanning}
+          codebasePath={codebasePath}
           onUndo={handleUndo}
           onRescan={handleRescan}
-          onDismiss={() => setFixPhase('idle')}
+          onDismiss={() => useFixStore.getState().setPhase('idle')}
         />
       )}
+
+      <VerifyPanel />
 
       {/* Dependency graph — full width so the map has room to breathe */}
       <div className={`${a('animate-slideUp stagger-7')} mb-4`}>
@@ -1189,7 +1096,7 @@ function extractShortResult(msg: string): string {
 
 // ─── Fix-All Panel ────────────────────────────────────────────
 function FixAllPanel({
-  phase, vulns, agents, canUndo, undoing, rescanning, onUndo, onRescan, onDismiss
+  phase, vulns, agents, canUndo, undoing, rescanning, codebasePath, onUndo, onRescan, onDismiss
 }: {
   phase: FixPhase
   vulns: FixVulnRow[]
@@ -1197,10 +1104,13 @@ function FixAllPanel({
   canUndo: boolean
   undoing: boolean
   rescanning: boolean
+  codebasePath: string
   onUndo: () => void
   onRescan: () => void
   onDismiss: () => void
 }) {
+  const runVerify = useRunVerification(codebasePath)
+  const verifyRunning = useVerifyStore(s => s.phase) === 'running'
   const total = vulns.length
   const done = vulns.filter(v => v.status === 'done').length
   const failed = vulns.filter(v => v.status === 'failed').length
@@ -1243,6 +1153,13 @@ function FixAllPanel({
                   {undoing ? 'Undoing...' : 'Undo All Changes'}
                 </button>
               )}
+              <button
+                onClick={runVerify}
+                disabled={verifyRunning || !codebasePath}
+                className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-btn bg-indigo-500/10 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/20 transition-all btn-hover disabled:opacity-40"
+              >
+                {verifyRunning ? 'Verifying…' : 'Verify Build'}
+              </button>
               <button
                 onClick={onDismiss}
                 className="text-surface-500 hover:text-white transition-colors px-2"

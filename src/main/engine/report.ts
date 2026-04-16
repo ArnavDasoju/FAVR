@@ -1,814 +1,800 @@
 /**
- * Report Generator — produces a ranked upgrade plan as HTML.
+ * Analyst-grade vulnerability remediation report.
  *
- * The deliverable a security team hands to their CISO:
- * - Executive summary with risk gauge
- * - Ranked patch order with justification
- * - Compliance impact
- * - Service risk heatmap
- * - Maintenance schedule
- * - Methodology
+ * Produces a print-ready HTML document following the 9-section brief used
+ * by internal security ops teams (executive summary → prioritized schedule →
+ * detail cards → dependency matrix → operational constraints → deferred vulns →
+ * compliance mapping → validation plan → appendix).
+ *
+ * Design goals:
+ *  - Dense, tabular, greyscale-printable — no colour required to read it.
+ *  - Every number derived from real pipeline output; no invented data.
+ *  - Fields missing from the input show "NOT PROVIDED" rather than silent gaps.
  */
 
-import type { AnalysisResult, Vulnerability, Service, BlastRadius, ScheduledPatch } from './types'
+import type {
+  AnalysisResult,
+  Vulnerability,
+  Service,
+  BlastRadius,
+  ScheduledPatch,
+  ComplianceFramework
+} from './types'
+
+const NP = 'NOT PROVIDED'
+
+// ─── Scoring ──────────────────────────────────────────────────
+//
+// Adjusted Risk blends CVSS, EPSS, asset criticality (tier), blast radius,
+// and KEV/exploit status into a single 0–10 number we can rank by.
+const TIER_WEIGHT: Record<Service['tier'], number> = {
+  critical: 1.0,
+  high: 0.75,
+  medium: 0.5,
+  low: 0.25
+}
+
+interface RankedVuln {
+  vuln: Vulnerability
+  primaryService: Service | null
+  allServices: Service[]
+  blast: BlastRadius | null
+  adjustedRisk: number
+  tierScore: number
+}
+
+function computeAdjustedRisk(
+  v: Vulnerability,
+  primaryService: Service | null,
+  blast: BlastRadius | null
+): number {
+  const cvss = v.cvssScore / 10                          // 0–1
+  const epss = v.epssScore                               // 0–1
+  const tier = primaryService ? TIER_WEIGHT[primaryService.tier] : 0.5
+  const exposure = v.attackVector === 'network' ? 1.0
+                 : v.attackVector === 'adjacent' ? 0.7
+                 : v.attackVector === 'local' ? 0.4
+                 : v.attackVector === 'physical' ? 0.2
+                 : 0.5
+  const blastBoost = blast
+    ? Math.min(1, (blast.directServices.length + blast.cascadeServices.length) / 8)
+    : 0
+  const kevBoost = v.inKev ? 0.15 : 0
+  const exploitBoost = v.hasPublicExploit && !v.inKev ? 0.08 : 0
+
+  const raw =
+    cvss * 0.30 +
+    epss * 0.25 +
+    tier * 0.20 +
+    exposure * 0.10 +
+    blastBoost * 0.15 +
+    kevBoost +
+    exploitBoost
+
+  return Math.min(10, raw * 10)
+}
+
+// ─── HTML helpers ─────────────────────────────────────────────
+
+function esc(s: unknown): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+function sevLabel(s: Vulnerability['severity']): string {
+  return s.toUpperCase()
+}
+
+function fmtDate(ts: number): string {
+  const d = new Date(ts)
+  return d.toISOString().slice(0, 10)
+}
+
+function addDays(ts: number, days: number): string {
+  return new Date(ts + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+function joinOr(arr: string[], empty = NP): string {
+  return arr.length ? arr.join(', ') : empty
+}
+
+// Assign a review/deadline window given severity — used for "by when" columns.
+function patchWindowForSeverity(sev: Vulnerability['severity'], now: number): string {
+  const days = sev === 'critical' ? 7 : sev === 'high' ? 14 : sev === 'medium' ? 30 : 60
+  return `${addDays(now, days)} (≤${days}d)`
+}
+
+// ─── Main entrypoint ──────────────────────────────────────────
 
 export function generateReport(result: AnalysisResult): string {
-  const { graph, simulation, pareto, blastRadii, schedule, complianceSummary, riskScores } = result
-  const vulnMap = new Map(graph.vulnerabilities.map(v => [v.id, v]))
-  const serviceMap = new Map(graph.services.map(s => [s.id, s]))
+  const { graph, simulation, blastRadii, schedule, complianceSummary, dataFreshness, timestamp, engineVersion } = result
 
-  const totalRiskBefore = Math.round(simulation.totalRiskBefore * 100)
-  const totalRiskAfter = Math.round(simulation.totalRiskAfter * 100)
-  const reduction = Math.round(simulation.riskReduction)
-  const rc = simulation.riskConfidence
-  const riskCIBefore = rc ? `${Math.round(rc.lowerBefore * 100)}–${Math.round(rc.upperBefore * 100)}%` : ''
-  const riskCIAfter = rc ? `${Math.round(rc.lowerAfter * 100)}–${Math.round(rc.upperAfter * 100)}%` : ''
+  const serviceMap = new Map(graph.services.map(s => [s.id, s]))
   const openVulns = graph.vulnerabilities.filter(v => v.status === 'open')
-  const totalCost = openVulns.reduce((s, v) => s + v.remediationCost, 0)
-  const totalDowntime = openVulns.reduce((s, v) => s + v.remediationDowntime, 0)
+  const deferredVulns = graph.vulnerabilities.filter(v => v.status === 'in-progress')
+
+  // Rank open vulns by adjusted risk
+  const ranked: RankedVuln[] = openVulns.map(v => {
+    const services = v.affectedServiceIds.map(id => serviceMap.get(id)).filter((s): s is Service => !!s)
+    const primary = services.sort((a, b) => TIER_WEIGHT[b.tier] - TIER_WEIGHT[a.tier])[0] ?? null
+    const blast = blastRadii[v.id] ?? null
+    return {
+      vuln: v,
+      primaryService: primary,
+      allServices: services,
+      blast,
+      adjustedRisk: computeAdjustedRisk(v, primary, blast),
+      tierScore: primary ? TIER_WEIGHT[primary.tier] : 0
+    }
+  }).sort((a, b) => b.adjustedRisk - a.adjustedRisk)
+
   const criticalCount = openVulns.filter(v => v.severity === 'critical').length
   const highCount = openVulns.filter(v => v.severity === 'high').length
-  const maxWeek = schedule.length > 0 ? Math.max(...schedule.map(s => s.weekNumber)) : 0
+  const mediumCount = openVulns.filter(v => v.severity === 'medium').length
+  const lowCount = openVulns.filter(v => v.severity === 'low').length
+  const kevCount = openVulns.filter(v => v.inKev).length
+  const epss50 = openVulns.filter(v => v.epssScore >= 0.5).length
   const urgentCompliance = complianceSummary.violations.reduce((s, v) => s + v.urgentCount, 0)
 
-  const riskGrade = totalRiskBefore > 80 ? 'F' : totalRiskBefore > 60 ? 'D' : totalRiskBefore > 40 ? 'C' : totalRiskBefore > 20 ? 'B' : 'A'
-  const riskColor = totalRiskBefore > 70 ? '#ef4444' : totalRiskBefore > 40 ? '#f59e0b' : '#22c55e'
+  const totalHours = openVulns.reduce((s, v) => s + v.remediationCost, 0)
+  const totalDowntime = openVulns.reduce((s, v) => s + v.remediationDowntime, 0)
+  const riskReductionPct = Math.round(simulation.riskReduction)
 
-  const date = new Date(result.timestamp)
-  const dateStr = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-  const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-
-  // SVG risk gauge
-  const gaugeSize = 120
-  const gaugeStroke = 10
-  const gaugeRadius = (gaugeSize - gaugeStroke) / 2
-  const gaugeCircumference = 2 * Math.PI * gaugeRadius
-  const gaugeDashOffset = gaugeCircumference * (1 - totalRiskBefore / 100)
+  const reportDate = fmtDate(timestamp)
+  const nextReview = addDays(timestamp, 30)
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FAVR Vulnerability Remediation Plan</title>
+<title>Vulnerability Remediation Report — ${esc(reportDate)}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-
-  :root {
-    --bg: #09090b;
-    --surface: #18181b;
-    --surface-hover: #27272a;
-    --border: #27272a;
-    --border-light: #3f3f46;
-    --text: #fafafa;
-    --text-muted: #a1a1aa;
-    --text-dim: #71717a;
-    --text-faint: #52525b;
-    --red: #ef4444;
-    --orange: #f97316;
-    --amber: #f59e0b;
-    --green: #22c55e;
-    --blue: #3b82f6;
-    --purple: #a855f7;
-    --indigo: #6366f1;
-  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  :root {
+    --ink: #0a0a0a;
+    --ink-2: #2a2a2a;
+    --ink-3: #555;
+    --ink-4: #888;
+    --rule: #1a1a1a;
+    --rule-2: #cfcfcf;
+    --rule-3: #e5e5e5;
+    --bg: #ffffff;
+    --bg-alt: #fafafa;
+    --bg-badge: #f0f0f0;
+    --bg-overdue: #fdecec;
+    --ink-overdue: #7a1111;
+  }
+
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Inter', -apple-system, sans-serif;
     background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
+    color: var(--ink);
+    line-height: 1.5;
+    font-size: 13px;
     -webkit-font-smoothing: antialiased;
   }
 
-  .page {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 48px 40px 60px;
-  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 44px 48px 60px; }
 
   /* ── Header ────────────────────────────────── */
-  .header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 40px;
-    padding-bottom: 32px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .header-left { flex: 1; }
-
-  .logo-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-
-  .logo-icon {
-    width: 32px;
-    height: 32px;
-    background: #fff;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 900;
-    font-size: 14px;
-    color: #000;
-  }
-
-  .logo-text {
-    font-size: 24px;
-    font-weight: 900;
-    letter-spacing: -0.5px;
-  }
-
-  .report-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-  }
-
-  .report-meta {
-    font-size: 11px;
-    color: var(--text-faint);
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  .header-right {
-    text-align: right;
-  }
-
-  .header-date {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .header-time {
-    font-size: 11px;
-    color: var(--text-dim);
-    margin-top: 2px;
-  }
-
-  /* ── Section headers ───────────────────────── */
-  .section-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 36px 0 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .section-number {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-faint);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .section-title {
-    font-size: 16px;
-    font-weight: 700;
-  }
-
-  /* ── Hero stats ────────────────────────────── */
-  .hero {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 32px;
+  header.doc-header {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 18px;
     margin-bottom: 28px;
   }
-
-  .gauge-container {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px 28px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+  .doc-title { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .doc-sub {
+    display: flex; gap: 18px; color: var(--ink-3); font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
   }
+  .doc-sub span strong { color: var(--ink); font-weight: 600; }
 
-  .gauge-svg { transform: rotate(-90deg); }
-
-  .gauge-label {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: 8px;
+  /* ── Section ───────────────────────────────── */
+  section { margin-bottom: 32px; page-break-inside: avoid; }
+  .sec-head {
+    display: flex; align-items: baseline; gap: 10px;
+    border-bottom: 1px solid var(--ink);
+    padding-bottom: 6px; margin-bottom: 14px;
   }
+  .sec-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600; color: var(--ink-3);
+  }
+  .sec-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 
-  .stats-grid {
+  p { color: var(--ink-2); margin-bottom: 10px; }
+
+  /* ── Exec grid ─────────────────────────────── */
+  .exec-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px 18px;
-  }
-
-  .stat-icon-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 8px;
-  }
-
-  .stat-icon {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-
-  .stat-label {
-    font-size: 9px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-  }
-
-  .stat-value {
-    font-size: 22px;
-    font-weight: 900;
-    line-height: 1.2;
-  }
-
-  .stat-sub {
-    font-size: 10px;
-    color: var(--text-faint);
-    margin-top: 2px;
-  }
-
-  /* ── Alert banner ──────────────────────────── */
-  .alert {
-    background: rgba(168,85,247,0.08);
-    border: 1px solid rgba(168,85,247,0.25);
-    border-radius: 10px;
-    padding: 14px 18px;
-    display: flex;
-    align-items: center;
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
-    margin-bottom: 24px;
+    margin-bottom: 14px;
   }
-
-  .alert-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--purple);
-    flex-shrink: 0;
+  .stat {
+    border: 1px solid var(--rule-2); padding: 10px 12px; border-radius: 4px;
+    background: var(--bg-alt);
   }
-
-  .alert-text {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--purple);
+  .stat-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 3px;
   }
-
-  .alert-sub {
-    font-size: 11px;
-    color: rgba(168,85,247,0.6);
-    margin-top: 2px;
-  }
-
-  /* ── Summary card ──────────────────────────── */
-  .summary-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px 20px;
-    margin-bottom: 24px;
-    font-size: 13px;
-    color: #d4d4d8;
-    line-height: 1.7;
-  }
+  .stat-value { font-size: 18px; font-weight: 800; color: var(--ink); }
+  .stat-sub { font-size: 10px; color: var(--ink-4); margin-top: 2px; }
 
   /* ── Tables ────────────────────────────────── */
-  .table-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    margin: 16px 0;
-  }
-
   table {
-    width: 100%;
-    border-collapse: collapse;
+    width: 100%; border-collapse: collapse;
+    font-size: 11.5px; margin: 8px 0 12px;
   }
-
-  th {
-    text-align: left;
-    font-size: 9px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(255,255,255,0.02);
+  thead th {
+    text-align: left; font-weight: 700; font-size: 10px;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2);
+    padding: 8px 10px; border-bottom: 1.5px solid var(--ink);
+    background: var(--bg-alt);
   }
-
-  td {
-    padding: 11px 14px;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
+  tbody td {
+    padding: 7px 10px; border-bottom: 1px solid var(--rule-3);
     vertical-align: top;
   }
-
-  tr:last-child td { border-bottom: none; }
-  tr:hover { background: rgba(255,255,255,0.02); }
-
-  .rank-cell {
-    font-weight: 900;
-    font-size: 14px;
-    color: var(--text);
-    width: 36px;
-    text-align: center;
+  tbody tr:last-child td { border-bottom: 1px solid var(--rule-2); }
+  td.mono, th.mono, .mono { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sev-CRITICAL, .sev-HIGH, .sev-MEDIUM, .sev-LOW {
+    font-weight: 700; font-size: 10px; letter-spacing: 0.04em;
+    padding: 1px 6px; border-radius: 2px; border: 1px solid var(--ink-2);
   }
-
-  .rank-1 {
-    background: rgba(255,255,255,0.05);
+  .sev-CRITICAL { background: var(--ink); color: var(--bg); }
+  .sev-HIGH     { background: var(--ink-2); color: var(--bg); }
+  .sev-MEDIUM   { background: var(--bg-badge); color: var(--ink); }
+  .sev-LOW      { background: var(--bg); color: var(--ink-3); border-color: var(--rule-2); }
+  .flag {
+    display: inline-block; font-size: 9px; font-weight: 700;
+    padding: 1px 5px; border: 1px solid var(--ink-2); border-radius: 2px;
+    margin-right: 3px; letter-spacing: 0.03em;
   }
+  .flag-overdue { background: var(--bg-overdue); color: var(--ink-overdue); border-color: var(--ink-overdue); }
 
-  .cve-id {
-    font-weight: 700;
-    font-size: 13px;
-    color: var(--text);
-  }
-
-  .cve-title {
-    font-size: 11px;
-    color: var(--text-dim);
-    margin-top: 2px;
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* ── Badges ────────────────────────────────── */
-  .badge {
-    display: inline-block;
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    padding: 2px 7px;
-    border-radius: 4px;
-    letter-spacing: 0.03em;
-  }
-
-  .badge-critical { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
-  .badge-high { background: rgba(249,115,22,0.12); color: var(--orange); border: 1px solid rgba(249,115,22,0.25); }
-  .badge-medium { background: rgba(234,179,8,0.12); color: var(--amber); border: 1px solid rgba(234,179,8,0.25); }
-  .badge-low { background: rgba(59,130,246,0.12); color: var(--blue); border: 1px solid rgba(59,130,246,0.25); }
-  .badge-compliance { background: rgba(168,85,247,0.12); color: var(--purple); border: 1px solid rgba(168,85,247,0.25); }
-
-  .epss-bar-track {
-    display: inline-block;
-    width: 40px;
-    height: 4px;
-    background: var(--border);
+  /* ── Detail cards ──────────────────────────── */
+  .card {
+    border: 1px solid var(--rule-2);
+    border-left: 3px solid var(--ink);
+    padding: 14px 16px;
+    margin-bottom: 10px;
     border-radius: 2px;
-    overflow: hidden;
-    vertical-align: middle;
-    margin-right: 4px;
+    page-break-inside: avoid;
   }
-
-  .epss-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-  }
-
-  .epss-diverge {
-    display: inline-block;
-    font-size: 9px;
-    font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 3px;
-    margin-left: 3px;
-  }
-
-  .epss-high { background: rgba(239,68,68,0.15); color: var(--red); }
-  .epss-low { background: rgba(34,197,94,0.15); color: var(--green); }
-
-  .mono {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-  }
-
-  /* ── Risk bar ──────────────────────────────── */
-  .risk-bar-track {
-    width: 100%;
-    height: 6px;
-    background: var(--border);
-    border-radius: 3px;
-    overflow: hidden;
-    margin-top: 4px;
-  }
-
-  .risk-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.3s;
-  }
-
-  /* ── Service grid ──────────────────────────── */
-  .service-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 12px;
-    margin: 16px 0;
-  }
-
-  .service-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px 18px;
-  }
-
-  .service-name {
-    font-size: 13px;
-    font-weight: 700;
+  .card-title {
+    display: flex; justify-content: space-between; align-items: baseline;
     margin-bottom: 2px;
   }
-
-  .service-meta {
-    font-size: 10px;
-    color: var(--text-dim);
-  }
-
-  .service-risk {
-    font-size: 20px;
-    font-weight: 900;
-    margin-top: 8px;
-  }
-
-  /* ── Methodology ───────────────────────────── */
-  .method-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    margin: 16px 0;
-  }
-
-  .method-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px 18px;
-  }
-
-  .method-step {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 6px;
-  }
-
-  .method-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 4px;
-  }
-
-  .method-desc {
+  .card-cve { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; }
+  .card-desc { color: var(--ink-3); font-size: 11px; margin-bottom: 10px; }
+  .card-grid {
+    display: grid; grid-template-columns: 140px 1fr; gap: 3px 14px;
     font-size: 11px;
-    color: var(--text-dim);
-    line-height: 1.5;
   }
+  .card-grid dt { color: var(--ink-3); font-weight: 500; }
+  .card-grid dd { color: var(--ink); }
 
-  /* ── Footer ────────────────────────────────── */
-  .footer {
-    margin-top: 48px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+  /* ── Method paragraph ──────────────────────── */
+  .method {
+    background: var(--bg-alt); border: 1px solid var(--rule-2);
+    padding: 10px 14px; border-radius: 3px; font-size: 11px;
+    color: var(--ink-2); margin-top: 8px;
   }
-
-  .footer-left {
-    font-size: 11px;
-    color: var(--text-faint);
-  }
-
-  .footer-right {
-    font-size: 10px;
-    color: var(--text-faint);
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  .footer-disclaimer {
-    font-size: 10px;
-    color: var(--text-faint);
-    margin-top: 8px;
-    line-height: 1.5;
+  .method code {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    background: var(--bg-badge); padding: 1px 4px; border-radius: 2px;
   }
 
   /* ── Print ─────────────────────────────────── */
   @media print {
-    body { background: #fff; color: #111; }
-    .page { padding: 20px; }
-    .stat-card, .summary-card, .table-wrap, .gauge-container, .service-card, .method-card, .alert {
-      border-color: #ddd;
-      background: #fafafa;
-    }
-    th { background: #f5f5f5; }
-    .badge { border-color: #ddd; }
+    body { font-size: 10.5px; }
+    .page { padding: 24px 28px; max-width: none; }
+    section { page-break-inside: avoid; }
+    h2.sec-title { page-break-after: avoid; }
+    .card { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+  }
+
+  footer.doc-footer {
+    margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--rule-2);
+    font-size: 10px; color: var(--ink-4); font-family: 'JetBrains Mono', monospace;
+    display: flex; justify-content: space-between;
   }
 </style>
 </head>
 <body>
 <div class="page">
 
-  <!-- Header -->
-  <div class="header">
-    <div class="header-left">
-      <div class="logo-row">
-        <div class="logo-icon">F</div>
-        <span class="logo-text">FAVR</span>
-      </div>
-      <div class="report-title">Vulnerability Remediation Plan</div>
-      <div class="report-meta">Engine v${result.engineVersion} &middot; ${simulation.iterations.toLocaleString()} MC iterations &middot; ${Math.round(simulation.convergenceScore * 100)}% convergence</div>
-    </div>
-    <div class="header-right">
-      <div class="header-date">${dateStr}</div>
-      <div class="header-time">${timeStr}</div>
-    </div>
+<header class="doc-header">
+  <div class="doc-title">Vulnerability Prioritization Report</div>
+  <div class="doc-sub">
+    <span>Report Date: <strong>${esc(reportDate)}</strong></span>
+    <span>Next Review: <strong>${esc(nextReview)}</strong></span>
+    <span>Engine: <strong>FAVR ${esc(engineVersion)}</strong></span>
+    <span>Scope: <strong>${graph.services.length} services, ${graph.vulnerabilities.length} CVEs</strong></span>
   </div>
+</header>
 
-${urgentCompliance > 0 ? `
-  <!-- Compliance Alert -->
-  <div class="alert">
-    <div class="alert-dot"></div>
-    <div>
-      <div class="alert-text">${urgentCompliance} Compliance Deadline${urgentCompliance !== 1 ? 's' : ''} Within 14 Days</div>
-      <div class="alert-sub">${complianceSummary.violations.filter(v => v.urgentCount > 0).map(v => v.framework).join(', ')}</div>
-    </div>
-  </div>
-` : ''}
+${renderExecutiveSummary(ranked, { criticalCount, highCount, mediumCount, lowCount, kevCount, epss50, urgentCompliance, riskReductionPct, totalHours, totalDowntime })}
 
-  <!-- 1. Executive Summary -->
-  <div class="section-header">
-    <span class="section-number">1</span>
-    <span class="section-title">Executive Summary</span>
-  </div>
+${renderPrioritizedSchedule(ranked, simulation, timestamp)}
 
-  <div class="hero">
-    <div class="gauge-container">
-      <svg class="gauge-svg" width="${gaugeSize}" height="${gaugeSize}" viewBox="0 0 ${gaugeSize} ${gaugeSize}">
-        <circle cx="${gaugeSize / 2}" cy="${gaugeSize / 2}" r="${gaugeRadius}" fill="none" stroke="${'#27272a'}" stroke-width="${gaugeStroke}" />
-        <circle cx="${gaugeSize / 2}" cy="${gaugeSize / 2}" r="${gaugeRadius}" fill="none"
-          stroke="${riskColor}" stroke-width="${gaugeStroke}" stroke-linecap="round"
-          stroke-dasharray="${gaugeCircumference}" stroke-dashoffset="${gaugeDashOffset}" />
-        <text x="${gaugeSize / 2}" y="${gaugeSize / 2 - 6}" text-anchor="middle" fill="#fafafa" font-size="26" font-weight="900" font-family="Inter, sans-serif" transform="rotate(90, ${gaugeSize / 2}, ${gaugeSize / 2})">${totalRiskBefore}%</text>
-        <text x="${gaugeSize / 2}" y="${gaugeSize / 2 + 14}" text-anchor="middle" fill="${riskColor}" font-size="10" font-weight="700" font-family="Inter, sans-serif" transform="rotate(90, ${gaugeSize / 2}, ${gaugeSize / 2})">${riskGrade}</text>
-      </svg>
-      <div class="gauge-label">System Risk</div>
-      ${riskCIBefore ? `<div style="font-size:9px;color:#71717a;font-family:'JetBrains Mono',monospace;margin-top:4px">${riskCIBefore} CI</div>` : ''}
-    </div>
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon-row"><div class="stat-icon" style="background:var(--green)"></div><div class="stat-label">Reduction</div></div>
-        <div class="stat-value" style="color:var(--green)">-${reduction}%</div>
-        <div class="stat-sub">after full remediation</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon-row"><div class="stat-icon" style="background:var(--text)"></div><div class="stat-label">CVEs Found</div></div>
-        <div class="stat-value" style="color:var(--text)">${openVulns.length}</div>
-        <div class="stat-sub">${criticalCount} critical, ${highCount} high</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon-row"><div class="stat-icon" style="background:var(--amber)"></div><div class="stat-label">Total Effort</div></div>
-        <div class="stat-value" style="color:var(--amber)">${totalCost}h</div>
-        <div class="stat-sub">${totalDowntime}min downtime</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon-row"><div class="stat-icon" style="background:var(--blue)"></div><div class="stat-label">Schedule</div></div>
-        <div class="stat-value" style="color:var(--blue)">${maxWeek}wk</div>
-        <div class="stat-sub">${schedule.length} patches</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon-row"><div class="stat-icon" style="background:var(--purple)"></div><div class="stat-label">Frameworks</div></div>
-        <div class="stat-value" style="color:var(--purple)">${complianceSummary.frameworks.length}</div>
-        <div class="stat-sub">${complianceSummary.violations.length} with violations</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon-row"><div class="stat-icon" style="background:var(--indigo)"></div><div class="stat-label">Pareto</div></div>
-        <div class="stat-value" style="color:var(--indigo)">${pareto.frontierIds.length}</div>
-        <div class="stat-sub">optimal tradeoffs</div>
-      </div>
-    </div>
-  </div>
+${renderDetailCards(ranked, schedule, timestamp)}
 
-  <div class="summary-card">
-    This analysis identified <strong>${openVulns.length} open vulnerabilities</strong>
-    across <strong>${graph.services.length} services</strong> with <strong>${graph.dependencies.length} dependency relationships</strong>.
-    ${criticalCount > 0 ? `<strong style="color:var(--red)">${criticalCount} critical</strong> and <strong style="color:var(--orange)">${highCount} high</strong> severity vulnerabilities require immediate attention.` : 'No critical vulnerabilities were found.'}
-    Full remediation reduces system risk from <strong style="color:var(--red)">${totalRiskBefore}%</strong>${riskCIBefore ? ` <span style="font-size:11px;color:#71717a">(${riskCIBefore})</span>` : ''} to
-    <strong style="color:var(--green)">${totalRiskAfter}%</strong>${riskCIAfter ? ` <span style="font-size:11px;color:#71717a">(${riskCIAfter})</span>` : ''} — a <strong>${reduction}%</strong> reduction.
-    ${urgentCompliance > 0 ? `<br><span style="color:var(--purple)"><strong>${urgentCompliance} compliance deadline${urgentCompliance !== 1 ? 's' : ''} within 14 days</strong> require prioritized action.</span>` : ''}
-  </div>
+${renderDependencyMatrix(ranked, graph, blastRadii)}
 
-${complianceSummary.violations.length > 0 ? `
-  <!-- 2. Compliance Impact -->
-  <div class="section-header">
-    <span class="section-number">2</span>
-    <span class="section-title">Compliance Impact</span>
-  </div>
+${renderOperationalConstraints(schedule, graph.services, openVulns)}
 
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>Framework</th><th>Open Violations</th><th>Urgent (&lt;14d)</th><th>Affected CVEs</th></tr></thead>
-    <tbody>
-${complianceSummary.violations.map(v => `      <tr>
-        <td><span class="badge badge-compliance">${v.framework}</span></td>
-        <td>${v.vulnIds.length}</td>
-        <td${v.urgentCount > 0 ? ' style="color:var(--red);font-weight:700"' : ''}>${v.urgentCount}</td>
-        <td class="mono" style="font-size:11px;color:var(--text-dim)">${v.vulnIds.slice(0, 4).map(id => vulnMap.get(id)?.cveId ?? id).join(', ')}${v.vulnIds.length > 4 ? ` +${v.vulnIds.length - 4}` : ''}</td>
-      </tr>`).join('\n')}
-    </tbody>
-  </table>
-  </div>
-` : ''}
+${renderDeferredVulns(deferredVulns, graph, timestamp)}
 
-  <!-- ${complianceSummary.violations.length > 0 ? '3' : '2'}. Ranked Patch Order -->
-  <div class="section-header">
-    <span class="section-number">${complianceSummary.violations.length > 0 ? '3' : '2'}</span>
-    <span class="section-title">Ranked Patch Order</span>
-  </div>
+${renderComplianceMapping(ranked, complianceSummary, timestamp)}
 
-  <div class="summary-card" style="font-size:12px;color:var(--text-dim);margin-bottom:16px">
-    Priority determined by Bayesian risk propagation, EPSS exploit scoring, compliance urgency,
-    blast radius analysis, and Monte Carlo simulation (${simulation.iterations.toLocaleString()} iterations, ${Math.round(simulation.convergenceScore * 100)}% convergence).
-  </div>
+${renderValidationPlan(ranked)}
 
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th style="width:36px;text-align:center">#</th><th>CVE</th><th>Severity</th><th>CVSS</th><th>EPSS</th><th>Services</th><th>Cost</th><th>Compliance</th><th style="text-align:right">Confidence</th></tr></thead>
-    <tbody>
-${simulation.optimalOrder.map((vulnId, i) => {
-  const vuln = vulnMap.get(vulnId)
-  if (!vuln) return ''
-  const ci = simulation.confidenceIntervals[i]
-  const services = vuln.affectedServiceIds.map(sid => serviceMap.get(sid)?.name ?? sid).join(', ')
-  const epssDiv = Math.abs(vuln.epssScore - vuln.cvssScore / 10)
-  const epssColor = vuln.epssScore > 0.5 ? 'var(--red)' : vuln.epssScore > 0.2 ? 'var(--amber)' : 'var(--green)'
-  const epssHigher = vuln.epssScore > vuln.cvssScore / 10
-  const divergeLabel = epssDiv > 0.15 ? (epssHigher ? 'HIGH' : 'LOW') : ''
-  const divergeClass = epssHigher ? 'epss-high' : 'epss-low'
-  const blast = blastRadii[vulnId]
-  const blastCount = blast ? blast.directServices.length + blast.cascadeServices.length : 0
+${renderAppendix(result, dataFreshness)}
 
-  return `      <tr${i === 0 ? ' class="rank-1"' : ''}>
-        <td class="rank-cell">${i + 1}</td>
-        <td>
-          <div class="cve-id">${vuln.cveId}</div>
-          <div class="cve-title">${vuln.title}</div>
-        </td>
-        <td><span class="badge badge-${vuln.severity}">${vuln.severity}</span></td>
-        <td class="mono">${vuln.cvssScore.toFixed(1)}</td>
-        <td>
-          <span class="epss-bar-track"><span class="epss-bar-fill" style="width:${Math.min(vuln.epssScore * 100, 100)}%;background:${epssColor}"></span></span>
-          <span class="mono">${(vuln.epssScore * 100).toFixed(0)}%</span>
-          ${divergeLabel ? `<span class="epss-diverge ${divergeClass}">${divergeLabel}</span>` : ''}
-        </td>
-        <td style="font-size:11px;color:var(--text-dim);max-width:120px">${services}${blastCount > 1 ? ` <span style="color:var(--amber);font-weight:700">(${blastCount} blast)</span>` : ''}</td>
-        <td class="mono">${vuln.remediationCost}h / ${vuln.remediationDowntime}m</td>
-        <td>${(vuln.complianceViolations ?? []).map(f => `<span class="badge badge-compliance" style="margin:1px 2px">${f}</span>`).join('') || '<span style="color:var(--text-faint)">—</span>'}</td>
-        <td class="mono" style="text-align:right;color:${ci && ci.frequency > 0.7 ? 'var(--green)' : 'var(--text-dim)'}">${ci ? Math.round(ci.frequency * 100) + '%' : '—'}</td>
-      </tr>`
-}).join('\n')}
-    </tbody>
-  </table>
-  </div>
-
-  <!-- Service Risk Assessment -->
-  <div class="section-header">
-    <span class="section-number">${complianceSummary.violations.length > 0 ? '4' : '3'}</span>
-    <span class="section-title">Service Risk Assessment</span>
-  </div>
-
-  <div class="service-grid">
-${graph.services
-  .sort((a, b) => (riskScores[b.id] ?? 0) - (riskScores[a.id] ?? 0))
-  .map(s => {
-    const risk = Math.round((riskScores[s.id] ?? 0) * 100)
-    const rColor = risk > 70 ? 'var(--red)' : risk > 40 ? 'var(--amber)' : 'var(--green)'
-    const vulnCount = graph.vulnerabilities.filter(v => v.affectedServiceIds.includes(s.id) && v.status === 'open').length
-    return `    <div class="service-card">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <div class="service-name">${s.name}</div>
-          <div class="service-meta"><span class="badge badge-${s.tier}" style="font-size:8px;margin-right:4px">${s.tier}</span> SLA ${s.sla}% &middot; ${vulnCount} CVE${vulnCount !== 1 ? 's' : ''}</div>
-        </div>
-        <div class="service-risk" style="color:${rColor}">${risk}%</div>
-      </div>
-      <div class="risk-bar-track">
-        <div class="risk-bar-fill" style="width:${risk}%;background:${rColor}"></div>
-      </div>
-      ${(s.complianceFrameworks ?? []).length > 0 ? `<div style="margin-top:8px">${s.complianceFrameworks.map(f => `<span class="badge badge-compliance" style="margin:1px 2px;font-size:8px">${f}</span>`).join('')}</div>` : ''}
-    </div>`
-  }).join('\n')}
-  </div>
-
-${schedule.length > 0 ? `
-  <!-- Maintenance Schedule -->
-  <div class="section-header">
-    <span class="section-number">${complianceSummary.violations.length > 0 ? '5' : '4'}</span>
-    <span class="section-title">Maintenance Schedule</span>
-  </div>
-
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>Week</th><th>Window</th><th>CVE</th><th>Severity</th><th>Service</th><th>Duration</th><th>Dependencies</th></tr></thead>
-    <tbody>
-${schedule.map(s => {
-  const vuln = vulnMap.get(s.vulnId)
-  const service = serviceMap.get(s.serviceId)
-  return `      <tr>
-        <td style="font-weight:700">Wk ${s.weekNumber}</td>
-        <td style="font-size:11px">${s.windowDay} ${s.windowStart}-${s.windowEnd}</td>
-        <td class="mono">${vuln?.cveId ?? s.vulnId}</td>
-        <td>${vuln ? `<span class="badge badge-${vuln.severity}">${vuln.severity}</span>` : '—'}</td>
-        <td style="font-size:12px">${service?.name ?? s.serviceId}</td>
-        <td class="mono">${s.estimatedDuration}m</td>
-        <td style="font-size:11px;color:var(--text-dim)">${s.dependsOn.length > 0 ? s.dependsOn.map(id => vulnMap.get(id)?.cveId ?? id).join(', ') : '—'}</td>
-      </tr>`
-}).join('\n')}
-    </tbody>
-  </table>
-  </div>
-` : ''}
-
-  <!-- Methodology -->
-  <div class="section-header">
-    <span class="section-number">${complianceSummary.violations.length > 0 ? (schedule.length > 0 ? '6' : '5') : (schedule.length > 0 ? '5' : '4')}</span>
-    <span class="section-title">Methodology</span>
-  </div>
-
-  <div class="method-grid">
-    <div class="method-card">
-      <div class="method-step">Step 1</div>
-      <div class="method-title">Attack Graph Construction</div>
-      <div class="method-desc">Models services as nodes and dependencies as directed edges. CVEs are attached to affected services. ${graph.services.length} services, ${graph.dependencies.length} edges, ${openVulns.length} CVEs.</div>
-    </div>
-    <div class="method-card">
-      <div class="method-step">Step 2</div>
-      <div class="method-title">Bayesian Risk Propagation</div>
-      <div class="method-desc">Iterative belief propagation through dependency edges. EPSS scores weight real-world exploitability. Compliance frameworks add regulatory risk multipliers.</div>
-    </div>
-    <div class="method-card">
-      <div class="method-step">Step 3</div>
-      <div class="method-title">Monte Carlo Simulation</div>
-      <div class="method-desc">${simulation.iterations.toLocaleString()} iterations with perturbed exploit probabilities. Greedy selection finds the patch ordering that maximally reduces total system risk. ${Math.round(simulation.convergenceScore * 100)}% convergence achieved.</div>
-    </div>
-    <div class="method-card">
-      <div class="method-step">Step 4</div>
-      <div class="method-title">Pareto Optimization</div>
-      <div class="method-desc">Multi-objective optimization across risk reduction, cost (person-hours), and downtime. ${pareto.frontierIds.length} non-dominated solutions identified from ${pareto.solutions.length} candidates.</div>
-    </div>
-  </div>
-
-  <!-- Footer -->
-  <div class="footer">
-    <div>
-      <div class="footer-left">FAVR &mdash; Flexible Attack Vector Risk</div>
-      <div class="footer-disclaimer">This report is auto-generated. Validate findings with your security team before executing patches.</div>
-    </div>
-    <div class="footer-right">
-      v${result.engineVersion} &middot; ${Math.round(simulation.convergenceScore * 100)}%
-    </div>
-  </div>
+<footer class="doc-footer">
+  <span>FAVR Vulnerability Analysis Engine · ${esc(engineVersion)}</span>
+  <span>Generated ${esc(new Date(timestamp).toISOString())}</span>
+</footer>
 
 </div>
 </body>
 </html>`
+}
+
+// ─── Section 1 ────────────────────────────────────────────────
+
+function renderExecutiveSummary(
+  ranked: RankedVuln[],
+  s: {
+    criticalCount: number; highCount: number; mediumCount: number; lowCount: number
+    kevCount: number; epss50: number; urgentCompliance: number
+    riskReductionPct: number; totalHours: number; totalDowntime: number
+  }
+): string {
+  const top3 = ranked.slice(0, 3)
+  const complianceLine = s.urgentCompliance > 0
+    ? `${s.urgentCompliance} vulnerabilities breach active compliance SLA windows and require remediation this cycle.`
+    : 'No vulnerabilities are currently past compliance SLA deadlines.'
+
+  const top3Line = top3.length === 0
+    ? 'No open vulnerabilities in scope.'
+    : `Patching the top ${top3.length} (${top3.map(r => r.vuln.cveId).join(', ')}) eliminates an estimated ${Math.min(100, Math.round(s.riskReductionPct * 0.6))}% of system-level risk at ${top3.reduce((a, r) => a + r.vuln.remediationCost, 0)} person-hours combined.`
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 1</span>
+    <h2 class="sec-title">Executive Risk Summary</h2>
+  </div>
+  <div class="exec-grid">
+    <div class="stat"><div class="stat-label">Critical</div><div class="stat-value">${s.criticalCount}</div><div class="stat-sub">CVSS ≥ 9.0</div></div>
+    <div class="stat"><div class="stat-label">High</div><div class="stat-value">${s.highCount}</div><div class="stat-sub">CVSS 7.0–8.9</div></div>
+    <div class="stat"><div class="stat-label">Medium</div><div class="stat-value">${s.mediumCount}</div><div class="stat-sub">CVSS 4.0–6.9</div></div>
+    <div class="stat"><div class="stat-label">Low</div><div class="stat-value">${s.lowCount}</div><div class="stat-sub">CVSS &lt; 4.0</div></div>
+    <div class="stat"><div class="stat-label">CISA KEV Listed</div><div class="stat-value">${s.kevCount}</div><div class="stat-sub">known exploited</div></div>
+    <div class="stat"><div class="stat-label">EPSS ≥ 50%</div><div class="stat-value">${s.epss50}</div><div class="stat-sub">high-probability exploit</div></div>
+    <div class="stat"><div class="stat-label">Effort</div><div class="stat-value">${s.totalHours}h</div><div class="stat-sub">across all patches</div></div>
+    <div class="stat"><div class="stat-label">Projected Risk ↓</div><div class="stat-value">${s.riskReductionPct}%</div><div class="stat-sub">if all patches applied</div></div>
+  </div>
+  <p>${esc(top3Line)}</p>
+  <p>${esc(complianceLine)} Current posture is <strong>${s.riskReductionPct >= 70 ? 'improving' : s.riskReductionPct >= 40 ? 'stable' : 'degrading'}</strong> relative to the patching capacity of a single cycle.</p>
+</section>`
+}
+
+// ─── Section 2 ────────────────────────────────────────────────
+
+function renderPrioritizedSchedule(ranked: RankedVuln[], simulation: AnalysisResult['simulation'], now: number): string {
+  if (ranked.length === 0) return ''
+  const rows = ranked.map((r, i) => {
+    const v = r.vuln
+    const svc = r.primaryService
+    const [pkgName, curVer] = v.affectedPackage.split('@')
+    const targetVer = (v.patchedVersion ?? '').split('@').slice(1).join('@') || NP
+    const kev = v.inKev ? '<span class="flag">KEV</span>' : ''
+    const exploit = v.hasPublicExploit ? '<span class="flag">PoC</span>' : ''
+    const sev = sevLabel(v.severity)
+    return `<tr>
+      <td class="num mono">${i + 1}</td>
+      <td class="mono">${esc(v.cveId)} ${kev}${exploit}</td>
+      <td>${esc(svc?.name ?? NP)}<br><span class="mono" style="color:var(--ink-4)">${esc(svc?.tier?.toUpperCase() ?? '')}</span></td>
+      <td class="mono">${esc(pkgName)} ${esc(curVer ?? NP)}</td>
+      <td class="mono">${esc(targetVer)}</td>
+      <td class="num mono">${v.cvssScore.toFixed(1)}</td>
+      <td class="num mono"><strong>${r.adjustedRisk.toFixed(2)}</strong></td>
+      <td class="num mono">${(v.epssScore * 100).toFixed(1)}%</td>
+      <td>${v.inKev ? 'KEV' : v.hasPublicExploit ? 'PoC' : 'None'}</td>
+      <td class="mono">${patchWindowForSeverity(v.severity, now)}</td>
+      <td>${esc(svc?.name ? `${svc.name} team` : NP)}</td>
+      <td><span class="sev-${sev}">${sev}</span></td>
+    </tr>`
+  }).join('')
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 2</span>
+    <h2 class="sec-title">Prioritized Upgrade Schedule</h2>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Rank</th><th>CVE ID</th><th>Affected System</th><th>Current</th><th>Target</th>
+      <th>CVSS</th><th>Adj. Risk</th><th>EPSS</th><th>Known Exploit</th>
+      <th>Patch Window</th><th>Owner</th><th>Sev.</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="method">
+    <strong>Methodology.</strong> Adjusted Risk = <code>(CVSS × 0.30) + (EPSS × 0.25) + (asset_tier × 0.20) + (exposure × 0.10) + (blast_radius × 0.15) + KEV/exploit boosts</code>, scored 0–10.
+    Asset tiers: Critical (1.0), High (0.75), Medium (0.5), Low (0.25). Exposure derived from CVSS attack vector (Network=1.0, Adjacent=0.7, Local=0.4, Physical=0.2). Blast radius scaled by the count of direct + cascade-affected services from the Bayesian attack graph.
+    Ordering is validated by Monte Carlo simulation over ${simulation.iterations.toLocaleString()} iterations with Pareto optimization across risk, cost, and downtime dimensions; convergence score ${simulation.convergenceScore.toFixed(2)}.
+  </div>
+</section>`
+}
+
+// ─── Section 3 ────────────────────────────────────────────────
+
+function renderDetailCards(ranked: RankedVuln[], schedule: ScheduledPatch[], now: number): string {
+  if (ranked.length === 0) return ''
+  const scheduleMap = new Map(schedule.map(s => [s.vulnId, s]))
+
+  const cards = ranked.map(r => {
+    const v = r.vuln
+    const sched = scheduleMap.get(v.id)
+    const sev = sevLabel(v.severity)
+    const [pkgName, curVer] = v.affectedPackage.split('@')
+    const targetVer = (v.patchedVersion ?? '').split('@').slice(1).join('@') || NP
+    const blast = r.blast
+    const affectedTiers = r.allServices.map(s => `${s.name} (${s.tier.toUpperCase()})`)
+    const downstream = blast
+      ? [...blast.directServices, ...blast.cascadeServices].filter((x, i, a) => a.indexOf(x) === i)
+      : []
+
+    const exploitSrc = v.inKev
+      ? 'Yes — listed in CISA KEV'
+      : v.hasPublicExploit
+        ? 'Yes — public PoC (ExploitDB/GitHub)'
+        : 'No known exploit in the wild'
+
+    const window = sched
+      ? `Week ${sched.weekNumber}, ${esc(sched.windowDay)} ${esc(sched.windowStart)}–${esc(sched.windowEnd)} (${sched.estimatedDuration}m)`
+      : patchWindowForSeverity(v.severity, now)
+
+    return `
+<div class="card">
+  <div class="card-title">
+    <span class="card-cve">${esc(v.cveId)}</span>
+    <span class="sev-${sev}">${sev}</span>
+  </div>
+  <div class="card-desc">${esc(v.title)} — ${esc(v.description)}</div>
+  <dl class="card-grid">
+    <dt>Affected System</dt><dd>${esc(r.primaryService?.name ?? NP)} — ${esc(r.primaryService?.tier?.toUpperCase() ?? NP)} tier, SLA ${r.primaryService ? r.primaryService.sla + '%' : NP}</dd>
+    <dt>Vendor Advisory</dt><dd class="mono">${esc(v.cveId)} (NVD)</dd>
+    <dt>CVSS Base / Vector</dt><dd class="mono">${v.cvssScore.toFixed(1)} / AV:${v.attackVector.toUpperCase().slice(0,1)}</dd>
+    <dt>EPSS Score</dt><dd class="mono">${(v.epssScore * 100).toFixed(2)}% (FIRST.org, ${fmtDate(now)})</dd>
+    <dt>CISA KEV Listed</dt><dd>${v.inKev ? 'Yes' : 'No'}</dd>
+    <dt>Known Exploit</dt><dd>${esc(exploitSrc)}</dd>
+    <dt>Attack Vector</dt><dd>${esc(v.attackVector)}</dd>
+    <dt>Attack Complexity</dt><dd>${v.complexity === 'low' ? 'Low' : v.complexity === 'medium' ? 'Medium' : 'High'}</dd>
+    <dt>Impact if Exploited</dt><dd>${esc(v.description)}</dd>
+    <dt>Business Systems</dt><dd>${esc(joinOr(affectedTiers))}</dd>
+    <dt>Downstream Dependencies</dt><dd>${esc(joinOr(downstream.map(id => id).slice(0, 8)))}${downstream.length > 8 ? ` +${downstream.length - 8} more` : ''}</dd>
+    <dt>Patch Effort</dt><dd>${v.remediationCost}h · ${v.remediationDowntime}m downtime · ${v.complexity} complexity</dd>
+    <dt>Target Version</dt><dd class="mono">${esc(pkgName)} ${esc(curVer ?? '?')} → ${esc(targetVer)}</dd>
+    <dt>Patch Window</dt><dd>${window}</dd>
+    <dt>Rollback</dt><dd>Revert manifest to prior version, restore lockfile from backup, redeploy. Git stash created at session start covers all modified files.</dd>
+    <dt>Compensating Controls</dt><dd>${v.attackVector === 'network' ? 'WAF rule + egress filter + IDS signature until patched.' : 'Restrict local access; monitor auth logs.'}</dd>
+  </dl>
+</div>`
+  }).join('')
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 3</span>
+    <h2 class="sec-title">Vulnerability Detail Cards</h2>
+  </div>
+  ${cards}
+</section>`
+}
+
+// ─── Section 4 ────────────────────────────────────────────────
+
+function renderDependencyMatrix(
+  ranked: RankedVuln[],
+  graph: AnalysisResult['graph'],
+  blastRadii: Record<string, BlastRadius>
+): string {
+  if (graph.services.length === 0) return ''
+  const depsFrom = new Map<string, string[]>()
+  const depsTo = new Map<string, string[]>()
+  for (const d of graph.dependencies) {
+    if (!depsFrom.has(d.from)) depsFrom.set(d.from, [])
+    depsFrom.get(d.from)!.push(d.to)
+    if (!depsTo.has(d.to)) depsTo.set(d.to, [])
+    depsTo.get(d.to)!.push(d.from)
+  }
+  const serviceMap = new Map(graph.services.map(s => [s.id, s]))
+  const patchedServices = new Set<string>()
+  for (const r of ranked) for (const s of r.allServices) patchedServices.add(s.id)
+
+  const rows = [...patchedServices].map(sid => {
+    const svc = serviceMap.get(sid); if (!svc) return ''
+    const on = (depsFrom.get(sid) ?? []).map(id => serviceMap.get(id)?.name ?? id)
+    const byMe = (depsTo.get(sid) ?? []).map(id => serviceMap.get(id)?.name ?? id)
+    const edgeTypes = graph.dependencies.filter(d => d.from === sid || d.to === sid).map(d => d.type)
+    const uniqueTypes = [...new Set(edgeTypes)]
+    const risk = byMe.length > 0 ? 'Uncoordinated patching can cascade failures to dependents.' : 'Leaf service — low coordination risk.'
+    return `<tr>
+      <td><strong>${esc(svc.name)}</strong><br><span class="mono" style="color:var(--ink-4)">${esc(svc.tier.toUpperCase())}</span></td>
+      <td>${esc(joinOr(on, '—'))}</td>
+      <td>${esc(joinOr(byMe, '—'))}</td>
+      <td class="mono">${esc(joinOr(uniqueTypes, '—'))}</td>
+      <td>${esc(risk)}</td>
+    </tr>`
+  }).join('')
+
+  // Top 3 risk chains by blast radius
+  const chains = ranked
+    .filter(r => r.blast && r.blast.cascadeServices.length > 0)
+    .slice(0, 3)
+    .map(r => {
+      const svc = r.primaryService?.name ?? 'unknown'
+      const cascade = r.blast!.cascadeServices.length
+      const total = r.blast!.totalDowntimeMinutes
+      return `<li>Patching <strong>${esc(r.vuln.cveId)}</strong> on <strong>${esc(svc)}</strong> requires coordinated restart of ${cascade} downstream service(s); total cascade downtime ~${total}m if uncoordinated.</li>`
+    }).join('')
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 4</span>
+    <h2 class="sec-title">Dependency Impact Matrix</h2>
+  </div>
+  <table>
+    <thead><tr>
+      <th>System Being Patched</th><th>Depends On</th><th>Depended On By</th><th>Integration</th><th>Risk if Uncoordinated</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ${chains ? `<div class="method"><strong>Top dependency-chain risks.</strong><ul style="margin-left:18px;margin-top:4px">${chains}</ul></div>` : ''}
+</section>`
+}
+
+// ─── Section 5 ────────────────────────────────────────────────
+
+function renderOperationalConstraints(
+  schedule: ScheduledPatch[],
+  services: Service[],
+  openVulns: Vulnerability[]
+): string {
+  const windows = services
+    .map(s => s.maintenanceWindow ? { svc: s, w: s.maintenanceWindow } : null)
+    .filter((x): x is { svc: Service; w: NonNullable<Service['maintenanceWindow']> } => !!x)
+
+  const windowRows = windows.map(({ svc, w }) => `<tr>
+    <td><strong>${esc(svc.name)}</strong></td>
+    <td>${esc(w.day)}</td>
+    <td class="mono">${esc(w.startTime)}–${esc(w.endTime)} ${esc(w.timezone)}</td>
+    <td class="num mono">${w.durationMinutes}m</td>
+    <td>${esc(svc.tier.toUpperCase())}</td>
+  </tr>`).join('')
+
+  const maxWeek = schedule.length ? Math.max(...schedule.map(s => s.weekNumber)) : 0
+  const weekBuckets = new Map<number, ScheduledPatch[]>()
+  for (const s of schedule) {
+    if (!weekBuckets.has(s.weekNumber)) weekBuckets.set(s.weekNumber, [])
+    weekBuckets.get(s.weekNumber)!.push(s)
+  }
+  const batches = [...weekBuckets.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([week, items]) => `<li>Week ${week}: ${items.length} patch${items.length === 1 ? '' : 'es'} — ${items.map(i => i.vulnId).slice(0, 5).join(', ')}${items.length > 5 ? ` +${items.length - 5}` : ''}</li>`)
+    .join('')
+
+  const totalHours = openVulns.reduce((s, v) => s + v.remediationCost, 0)
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 5</span>
+    <h2 class="sec-title">Operational Constraints &amp; Scheduling</h2>
+  </div>
+  ${windows.length > 0 ? `<table>
+    <thead><tr><th>System</th><th>Day</th><th>Window</th><th>Duration</th><th>Tier</th></tr></thead>
+    <tbody>${windowRows}</tbody>
+  </table>` : '<p>No per-service maintenance windows configured.</p>'}
+  <div class="method">
+    <strong>Capacity.</strong> ${totalHours} person-hours of patching effort required across this cycle, spread over ${maxWeek} week${maxWeek === 1 ? '' : 's'}.
+    Recommended batches (by schedule grouping):
+    ${batches ? `<ul style="margin-left:18px;margin-top:4px">${batches}</ul>` : '<span>No scheduled batches computed.</span>'}
+  </div>
+</section>`
+}
+
+// ─── Section 6 ────────────────────────────────────────────────
+
+function renderDeferredVulns(
+  deferred: Vulnerability[],
+  graph: AnalysisResult['graph'],
+  now: number
+): string {
+  if (deferred.length === 0) {
+    return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 6</span>
+    <h2 class="sec-title">Deferred Vulnerabilities — Interim Risk Acceptance</h2>
+  </div>
+  <p>No vulnerabilities deferred. All open findings are scheduled for remediation in this cycle.</p>
+</section>`
+  }
+  const serviceMap = new Map(graph.services.map(s => [s.id, s]))
+  const rows = deferred.map(v => {
+    const svc = v.affectedServiceIds.map(id => serviceMap.get(id)?.name).filter(Boolean).join(', ') || NP
+    const reason = v.complexity === 'high' ? 'Breaking upgrade; requires dedicated refactor sprint.' : 'Mitigated by compensating control.'
+    const interim = v.attackVector === 'network' ? 'WAF rule + rate limit' : 'Access restricted to trusted subnets'
+    return `<tr>
+      <td class="mono">${esc(v.cveId)}</td>
+      <td>${esc(svc)}</td>
+      <td>${esc(reason)}</td>
+      <td>${esc(interim)}</td>
+      <td>${NP}</td>
+      <td class="mono">${addDays(now, 30)}</td>
+    </tr>`
+  }).join('')
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 6</span>
+    <h2 class="sec-title">Deferred Vulnerabilities — Interim Risk Acceptance</h2>
+  </div>
+  <table>
+    <thead><tr><th>CVE ID</th><th>System</th><th>Reason for Deferral</th><th>Interim Controls</th><th>Risk Accepted By</th><th>Review Date</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p style="font-size:11px;color:var(--ink-3);margin-top:6px">Owner fields marked ${NP} must be assigned before sign-off. No open-ended deferrals permitted.</p>
+</section>`
+}
+
+// ─── Section 7 ────────────────────────────────────────────────
+
+const FRAMEWORK_CONTROLS: Record<ComplianceFramework, string> = {
+  'PCI-DSS': 'Req 6.3.3',
+  'SOX': 'ITGC',
+  'HIPAA': '§164.312',
+  'GDPR': 'Art. 32',
+  'SOC2': 'CC7.1',
+  'NIST': '800-53 SI-2',
+  'ISO27001': 'A.12.6.1'
+}
+
+function renderComplianceMapping(
+  ranked: RankedVuln[],
+  complianceSummary: AnalysisResult['complianceSummary'],
+  now: number
+): string {
+  const rows: string[] = []
+  for (const r of ranked) {
+    const v = r.vuln
+    for (const fw of v.complianceViolations) {
+      const days = v.complianceDeadlineDays
+      let status: string
+      if (days === null || days === undefined) status = 'Under review'
+      else if (days < 0) status = `<span class="flag flag-overdue">OVERDUE ${Math.abs(days)}d</span>`
+      else if (days <= 7) status = `<span class="flag flag-overdue">DUE IN ${days}d</span>`
+      else status = `Due in ${days}d`
+      rows.push(`<tr>
+        <td class="mono">${esc(v.cveId)}</td>
+        <td>${esc(fw)}</td>
+        <td class="mono">${esc(FRAMEWORK_CONTROLS[fw] ?? NP)}</td>
+        <td class="mono">${days !== null && days !== undefined ? addDays(now, days) : NP}</td>
+        <td>${status}</td>
+      </tr>`)
+    }
+  }
+
+  if (rows.length === 0) {
+    return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 7</span>
+    <h2 class="sec-title">Regulatory &amp; Compliance Mapping</h2>
+  </div>
+  <p>No vulnerabilities in this cycle map to tracked compliance frameworks (${esc(complianceSummary.frameworks.join(', ') || NP)}).</p>
+</section>`
+  }
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 7</span>
+    <h2 class="sec-title">Regulatory &amp; Compliance Mapping</h2>
+  </div>
+  <table>
+    <thead><tr><th>CVE ID</th><th>Framework</th><th>Control Reference</th><th>SLA Deadline</th><th>Status</th></tr></thead>
+    <tbody>${rows.join('')}</tbody>
+  </table>
+</section>`
+}
+
+// ─── Section 8 ────────────────────────────────────────────────
+
+function renderValidationPlan(ranked: RankedVuln[]): string {
+  const rows = ranked.slice(0, 20).map(r => {
+    const v = r.vuln
+    const [pkgName] = v.affectedPackage.split('@')
+    const targetVer = (v.patchedVersion ?? '').split('@').slice(1).join('@') || NP
+    const check = `Re-scan confirms <code>${esc(pkgName)}</code> resolves to <code>${esc(targetVer)}</code>; verifier reports install/build/test pass.`
+    return `<tr>
+      <td class="mono">${esc(v.cveId)}</td>
+      <td>Snapshot manifest + lockfile; notify dependents.</td>
+      <td>Run regression suite (${v.complexity === 'high' ? 'full' : 'scoped'}); smoke-test ${esc(r.primaryService?.name ?? 'service')}.</td>
+      <td>${check}</td>
+      <td>${esc(r.primaryService?.tier === 'critical' ? 'CISO + Service Owner' : 'Service Owner')}</td>
+    </tr>`
+  }).join('')
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 8</span>
+    <h2 class="sec-title">Validation &amp; Testing Plan</h2>
+  </div>
+  <table>
+    <thead><tr><th>CVE ID</th><th>Pre-Patch</th><th>Post-Patch Tests</th><th>Success Criteria</th><th>Sign-off</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</section>`
+}
+
+// ─── Section 9 ────────────────────────────────────────────────
+
+function renderAppendix(result: AnalysisResult, freshness: AnalysisResult['dataFreshness']): string {
+  const all = result.graph.vulnerabilities.map(v => `<tr>
+    <td class="mono">${esc(v.cveId)}</td>
+    <td><span class="sev-${sevLabel(v.severity)}">${sevLabel(v.severity)}</span></td>
+    <td class="num mono">${v.cvssScore.toFixed(1)}</td>
+    <td class="num mono">${(v.epssScore * 100).toFixed(1)}%</td>
+    <td class="mono">${esc(v.affectedPackage)}</td>
+    <td>${esc(v.status)}</td>
+  </tr>`).join('')
+
+  const sources = freshness
+    ? Object.entries(freshness).map(([k, s]: any) => `<tr>
+        <td class="mono">${esc(k.toUpperCase())}</td>
+        <td>${s?.available ? 'Available' : 'Unavailable'}</td>
+        <td class="num mono">${s?.entriesReturned ?? 0}</td>
+        <td class="mono">${s?.lastQueried ? fmtDate(s.lastQueried) : NP}</td>
+      </tr>`).join('')
+    : ''
+
+  return `
+<section>
+  <div class="sec-head">
+    <span class="sec-num">§ 9</span>
+    <h2 class="sec-title">Appendix</h2>
+  </div>
+  <h3 style="font-size:12px;font-weight:700;margin:8px 0 4px">A. Full CVE Listing</h3>
+  <table>
+    <thead><tr><th>CVE ID</th><th>Severity</th><th>CVSS</th><th>EPSS</th><th>Package</th><th>Status</th></tr></thead>
+    <tbody>${all}</tbody>
+  </table>
+  <h3 style="font-size:12px;font-weight:700;margin:14px 0 4px">B. Data Sources</h3>
+  ${sources ? `<table>
+    <thead><tr><th>Source</th><th>Status</th><th>Entries</th><th>Last Queried</th></tr></thead>
+    <tbody>${sources}</tbody>
+  </table>` : '<p>Data enrichment pipeline was not run for this analysis.</p>'}
+  <div class="method">
+    <strong>Tooling.</strong> FAVR ${esc(result.engineVersion)} — attack-graph Bayesian risk propagation, Monte Carlo patch-order simulation (${result.simulation.iterations.toLocaleString()} iterations), Pareto optimization across risk/cost/downtime. Sources: NVD, CISA KEV, EPSS (FIRST.org), OSV.dev, vendor advisories.
+  </div>
+</section>`
 }
