@@ -2,6 +2,20 @@
 
 Security teams drown in CVE alerts but lack a principled way to decide *what to patch first*. FAVR ingests a real codebase, discovers its services and dependencies, queries live CVE databases, and produces a mathematically optimal patching plan — combining Bayesian risk propagation, Monte Carlo simulation, and Pareto optimization so engineers fix the highest-impact vulnerabilities first.
 
+> **Note:** This is a fork of a team project. See the [upstream repo](https://github.com/gvenu06/FAVR) for the original. My contributions include the Python agent pipeline (`favr/`), ML vulnerability classifier and patch-priority predictor (`favr/optimization/`), training scripts (`scripts/`), and the FastAPI server (`favr/pipeline/server.py`).
+
+### Screenshots
+
+<!-- Replace these placeholders with actual screenshots -->
+
+`[SCREENSHOT — desktop app dashboard with agent cards and remediation workspace]`
+
+`[SCREENSHOT — Monte Carlo simulation visualization]`
+
+`[SCREENSHOT — D3 dependency-graph view]`
+
+---
+
 ## Tech Stack
 
 | Layer | Technologies |
