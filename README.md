@@ -1,135 +1,154 @@
-# FAVR
+# FAVR — Find, Analyze, Verify, Resolve
 
-**Flexible Attack Vector Risk** — scan any real codebase and get a mathematically optimal patching plan.
+Security teams drown in CVE alerts but lack a principled way to decide *what to patch first*. FAVR ingests a real codebase, discovers its services and dependencies, queries live CVE databases, and produces a mathematically optimal patching plan — combining Bayesian risk propagation, Monte Carlo simulation, and Pareto optimization so engineers fix the highest-impact vulnerabilities first.
 
-Point it at a project directory → it auto-discovers services, maps dependencies, queries real CVE databases, then runs a full analysis pipeline (Bayesian risk propagation, Monte Carlo simulation, Pareto optimization) to produce an optimal patching strategy.
+## Tech Stack
+
+| Layer | Technologies |
+|---|---|
+| **Analysis engine** | TypeScript · attack-graph construction · Bayesian belief propagation · Monte Carlo simulation (configurable iterations) · Pareto frontier optimization · EPSS scoring · blast-radius analysis |
+| **CLI** | TypeScript · Commander.js · output formatters (table, JSON, HTML, SARIF) · `.favr.yml` config · diff mode for PR scanning |
+| **Desktop app** | Electron · React 18 · Zustand · Tailwind CSS · Recharts · D3 dependency graph · Vite |
+| **Python agent pipeline** | FastAPI · Anthropic SDK (Claude) · scikit-learn (GradientBoosting classifier + regressor) · NumPy · Pydantic |
+| **Backend** | Supabase (Postgres, Edge Functions, Auth) · Stripe integration |
+| **CI/CD** | GitHub Actions (SARIF upload to Code Scanning) · GitLab CI (MR notes) |
+
+---
+
+## How It Works
+
+### TypeScript Analysis Engine (`packages/favr-core`)
+
+A headless library with zero Electron dependencies, usable from CLI or desktop app:
+
+1. **Codebase discovery** — walks the project tree, identifies services, parses lockfiles, maps dependency graphs
+2. **CVE lookup** — queries OSV.dev for known vulnerabilities against discovered packages
+3. **Attack-graph construction** — models how vulnerabilities propagate through service dependencies
+4. **Bayesian risk propagation** — computes posterior risk scores per service given the dependency graph
+5. **Monte Carlo simulation** — samples thousands of patch orderings to find the sequence that minimizes cumulative risk exposure
+6. **Pareto optimization** — generates cost-vs-risk trade-off profiles so teams can pick a strategy that fits their budget
+7. **Report generation** — outputs HTML, JSON, SARIF, or terminal table
+
+### Python Agent Pipeline (`favr/`)
+
+A multi-agent system that adds LLM-powered reasoning on top of the numerical engine:
+
+- **Orchestrator** coordinates 5 specialist agents (scanner, dependency-conflict, remediation, compliance, risk-assessment) via a message bus
+- **Vulnerability classifier** — a scikit-learn GradientBoosting model trained to classify CVEs into 10 task types (critical-exploit, breaking-upgrade, config-hardening, etc.) based on CVSS features and description keywords
+- **Patch priority predictor** — a GradientBoosting regressor trained on Monte Carlo simulation outputs to predict optimal patch ordering without the full simulation cost
+- **FastAPI server** exposes the full pipeline as a REST API (`/api/pipeline/run`, `/api/vulnerabilities`, `/api/plan`, `/api/monte-carlo/results`, etc.)
+
+### Desktop App (`src/`)
+
+An Electron app that wraps the analysis engine with an interactive UI:
+
+- Dashboard with agent cards showing real-time pipeline progress
+- Remediation workspace with what-if analysis and schedule planning
+- Monte Carlo visualization, Pareto frontier charts, dependency graphs, service heatmaps
+- Git safety system — branches per task, stash management, merge-on-approve
+- LLM-powered validation pipeline with Gemini Flash VLM for screenshot-based verification
+- Free-first model routing (Ollama → Gemini → DeepSeek → Claude → GPT)
+
+---
 
 ## Quick Start
 
-```bash
-# Desktop app
-npm run dev
+### Desktop App
 
-# CLI
-npx favr-scan ./your-project
+```bash
+npm install
+npm run dev          # Opens the Electron app
 ```
+
+### CLI (local development)
+
+```bash
+# Build the workspace packages
+cd packages/favr-core && npm run build && cd ../..
+cd packages/favr-cli && npm run build && cd ../..
+
+# Run from the workspace
+npx favr-scan ./your-project
+
+# Output formats
+npx favr-scan ./your-project --format json
+npx favr-scan ./your-project --format sarif --output results.sarif
+npx favr-scan ./your-project --format html --output report.html
+
+# Fail CI if any critical or high findings
+npx favr-scan ./your-project --threshold high
+
+# Diff mode — only new or worsened vulnerabilities (useful in PRs)
+npx favr-scan ./your-project --diff --threshold high
+```
+
+### Python Pipeline
+
+```bash
+pip install -r requirements.txt
+python -m favr.pipeline          # Runs the agent pipeline on synthetic data
+uvicorn favr.pipeline.server:app --reload   # Starts the FastAPI server on :8000
+```
+
+---
 
 ## CI/CD Integration
 
-Get FAVR scanning your pull requests in under 5 minutes.
+Copy the included workflow files into your repo:
 
-### 1. Install
+- **GitHub Actions** — `.github/workflows/favr-scan.yml` runs on PRs, uploads SARIF to GitHub Code Scanning, posts a summary comment, and fails the check on threshold violations.
+- **GitLab CI** — `.gitlab-ci.yml` runs on merge requests, posts findings as MR notes, and fails on threshold violations.
 
-```bash
-npm install -g @favr/cli
-# or use npx: npx favr-scan ...
-```
-
-### 2. Add a config file (optional)
-
-Create `.favr.yml` in your project root:
+### Config File (`.favr.yml`)
 
 ```yaml
 threshold: high
 ignoredCves:
-  - CVE-2024-0001   # accepted risk, tracked in JIRA-1234
+  - CVE-2024-0001
 iterations: 500
+complianceStandards:
+  - PCI-DSS
 ```
 
-### 3. Drop in the workflow file
-
-**GitHub Actions** — copy `.github/workflows/favr-scan.yml` from this repo into yours. It will:
-- Run on every pull request
-- Upload SARIF results to GitHub Code Scanning (Security tab)
-- Post a comment on the PR with a summary
-- Fail the check if any finding meets or exceeds `--threshold high`
-
-**GitLab CI** — copy `.gitlab-ci.yml` from this repo. It will:
-- Run on merge requests
-- Post a note on the MR with findings
-- Fail the pipeline on threshold violations
-
-### CLI Usage
-
-```bash
-# Scan with colored table output (default)
-favr-scan ./my-project
-
-# JSON output (pipe-friendly, nothing else on stdout)
-favr-scan ./my-project --format json
-
-# SARIF for code scanning integrations
-favr-scan ./my-project --format sarif --output results.sarif
-
-# HTML report
-favr-scan ./my-project --format html --output report.html
-
-# Fail CI if any critical or high vulns found
-favr-scan ./my-project --threshold high
-
-# Diff mode — only report new or worsened vulns (great for PRs)
-favr-scan ./my-project --diff --threshold high
-
-# Use a CVSS score as threshold
-favr-scan ./my-project --threshold 7.0
-
-# Custom config file
-favr-scan ./my-project --config security/favr-config.yml
-```
-
-### Config File Reference
-
-Supported formats: `.favr.yml`, `.favr.yaml`, `.favr.json`
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `threshold` | `string` | Severity (`low`/`medium`/`high`/`critical`) or CVSS score |
-| `ignoredCves` | `string[]` | CVE IDs to exclude from results |
-| `patchingCosts` | `object` | Override remediation cost per CVE ID |
-| `iterations` | `number` | Monte Carlo simulation iterations (default: 500) |
-| `complianceStandards` | `string[]` | Compliance frameworks to check |
-
-CLI flags override config file values.
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | Scan complete, no findings above threshold |
-| `1` | Findings at or above threshold (or new/worsened in diff mode) |
-| `2` | Error (bad config, scan failure, invalid arguments) |
+---
 
 ## Project Structure
 
 ```
 packages/
-├── favr-core/          # Headless analysis engine (zero Electron deps)
+├── favr-core/           # Headless analysis engine (zero Electron deps)
 │   └── src/
-│       ├── index.ts    # scan() entry point
-│       ├── engine/     # Attack graph, Bayesian, Monte Carlo, Pareto, etc.
-│       └── ingest/     # Codebase analyzer, CVE lookup, scan history
-├── favr-cli/           # CLI binary (favr-scan)
+│       ├── index.ts     # scan() entry point
+│       ├── engine/      # Attack graph, Bayesian, Monte Carlo, Pareto, scheduler
+│       └── ingest/      # Codebase analyzer, CVE lookup, scan history
+├── favr-cli/            # CLI tool (favr-scan)
 │   └── src/
-│       ├── index.ts    # CLI entry point (commander)
-│       ├── formatters/ # table, json, html, sarif
-│       ├── config.ts   # .favr.yml loader
-│       └── diff.ts     # Diff mode logic
-src/                    # Electron desktop app (consumes @favr/core)
+│       ├── index.ts     # CLI entry point (Commander)
+│       ├── formatters/  # table, json, html, sarif
+│       └── config.ts    # .favr.yml loader
+favr/                    # Python agent pipeline
+├── agents/              # Orchestrator + 5 specialist agents
+├── optimization/        # Bayesian, Monte Carlo, Pareto, ML classifier, ML predictor
+└── pipeline/            # FastAPI server + CLI entry point
+src/                     # Electron desktop app
+├── main/                # Main process (IPC, engine, validation, git safety)
+├── renderer/            # React UI (dashboard, charts, settings, workspace)
+└── preload/             # Context bridge
+scripts/                 # ML model training scripts
+supabase/                # Edge functions (chat proxy, credits, validation)
 ```
 
-## Development
+---
+
+## Tests
 
 ```bash
-npm install          # Install all workspace dependencies
-npm run dev          # Start Electron desktop app
-npm run build        # Build desktop app
-
-# CLI development
 cd packages/favr-cli
-npm run build        # Compile TypeScript
-npm test             # Run tests
-
-# Core engine
-cd packages/favr-core
-npm run build        # Compile TypeScript
+npm test                 # Runs Vitest suite (config, formatters, diff, threshold, e2e)
 ```
+
+---
+
+## License
+
+[MIT](./LICENSE)

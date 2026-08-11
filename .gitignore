@@ -1,8 +1,34 @@
+# Dependencies
 node_modules/
-out/
 dist/
-.DS_Store
+out/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.pkl
+
+# Environment
+.env
 *.env
 *.env.local
 .env*.local
-.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.tsbuildinfo
+
+# Supabase temp
+supabase/.temp/
+
+# Generated output
+favr_results.json
+
+# IDE
+.vscode/
+.idea/

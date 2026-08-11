@@ -63,12 +63,20 @@ export interface Vulnerability {
   hasPublicExploit: boolean     // PoC or exploit code publicly available (ExploitDB, GitHub)
   complianceViolations: ComplianceFramework[]  // which frameworks this CVE violates
   complianceDeadlineDays: number | null  // days until compliance violation if unpatched
+  usageLocations?: CodeUsage[]  // concrete import/require sites found by usage-finder
 }
 
 export interface VulnConstraint {
   type: 'maintenance-window' | 'dependency' | 'team-capacity' | 'compliance'
   description: string
   blockedBy?: string[]  // CVE IDs that must be patched first
+}
+
+export interface CodeUsage {
+  file: string
+  line: number
+  snippet: string
+  symbol: string
 }
 
 // ─── Attack Graph ─────────────────────────────────────────────

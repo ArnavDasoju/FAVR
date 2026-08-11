@@ -1,7 +1,7 @@
 {
-  "name": "bld",
+  "name": "favr",
   "version": "0.1.0",
-  "description": "Mission control for AI coding agents",
+  "description": "Vulnerability prioritization engine — Bayesian risk propagation, Monte Carlo simulation, and multi-agent remediation planning",
   "main": "./out/main/index.js",
   "workspaces": [
     "packages/*"
