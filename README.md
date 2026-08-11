@@ -4,6 +4,13 @@
 
 Point it at a project directory → it auto-discovers services, maps dependencies, queries real CVE databases, then runs a full analysis pipeline (Bayesian risk propagation, Monte Carlo simulation, Pareto optimization) to produce an optimal patching strategy.
 
+## Screens
+
+![Monte Carlo Simulation](docs/screenshots/monte-carlo-simulation.png)
+![Dependency Graph](docs/screenshots/dependency-graph.png)
+![Parallel Agent in E2E Testing](docs/screenshots/parallel-agent-e2e-testing.png)
+![Risk Analysis Graph](docs/screenshots/risk-analysis-graph.png)
+
 ## Quick Start
 
 ```bash
