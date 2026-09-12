@@ -14,22 +14,28 @@ Point it at a project directory → it auto-discovers services, maps dependencie
 ## Quick Start
 
 ```bash
+npm install
+
 # Desktop app
 npm run dev
 
-# CLI
-npx favr-scan ./your-project
+# CLI (built from this repo, not published to npm)
+npm run build --workspace @favr/cli
+node packages/favr-cli/dist/index.js ./your-project
 ```
 
 ## CI/CD Integration
 
 Get FAVR scanning your pull requests in under 5 minutes.
 
-### 1. Install
+### 1. Build the CLI
+
+The CLI is not published to a registry. Build it from this repo and link it so `favr-scan` is on your PATH:
 
 ```bash
-npm install -g @favr/cli
-# or use npx: npx favr-scan ...
+npm install
+npm run build --workspace @favr/cli
+cd packages/favr-cli && npm link
 ```
 
 ### 2. Add a config file (optional)
@@ -57,6 +63,8 @@ iterations: 500
 - Fail the pipeline on threshold violations
 
 ### CLI Usage
+
+All examples assume you ran `npm link` above. Without linking, substitute `node packages/favr-cli/dist/index.js` for `favr-scan`.
 
 ```bash
 # Scan with colored table output (default)
